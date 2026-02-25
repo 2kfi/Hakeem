@@ -25,12 +25,12 @@ MCP_SERVER_URLS = [
     "http://10.200.71.180:2528/sse",
 ]
 
-WHISPER_MODEL = "/run/media/2kfi/DATA/Work-files/Projects/new-voice-asstant/models/whisper-medium"
+WHISPER_MODEL = "models/whisper-medium"
 
-TTS_MODEL_EN = "/run/media/2kfi/DATA/Work-files/Projects/new-voice-asstant/models/TTS-CORI-EN/en_GB-cori-high.onnx"
-TTS_CONFIG_EN = "/run/media/2kfi/DATA/Work-files/Projects/new-voice-asstant/models/TTS-CORI-EN/en_GB-cori-high.onnx.json"
-TTS_MODEL_AR = "/run/media/2kfi/DATA/Work-files/Projects/new-voice-asstant/models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx"
-TTS_CONFIG_AR = "/run/media/2kfi/DATA/Work-files/Projects/new-voice-asstant/models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json"
+TTS_MODEL_EN = "models/TTS-CORI-EN/en_GB-cori-high.onnx"
+TTS_CONFIG_EN = "models/TTS-CORI-EN/en_GB-cori-high.onnx.json"
+TTS_MODEL_AR = "models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx"
+TTS_CONFIG_AR = "models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json"
 
 SYN_config = SynthesisConfig(
     volume=0.5,
