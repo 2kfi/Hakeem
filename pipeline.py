@@ -1,15 +1,14 @@
-import reqirements;reqirements.install_requirements()
 import downloader; downloader.main()
 import asyncio
+import os
 import io
 import json
 import logging
 import uuid
 import wave
+import uvicorn
 from contextlib import AsyncExitStack
 from typing import Dict, List, Optional, Any
-
-import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
@@ -18,16 +17,19 @@ from mcp.client.sse import sse_client
 from openai import AsyncOpenAI
 from piper import PiperVoice
 from piper.config import SynthesisConfig
-
+# --- PRE-CONFIG ---
+has_cuda = os.system("nvidia-smi > /dev/null 2>&1") == 0
+print ("will use cuda for llama.cpp and also for faster-whisper") if has_cuda else print ("Will use CPU for llama.cpp and also for faster-whisper")
 # --- CONFIG ---
 LLAMA_API_URL = "http://10.200.71.180:2312/v1"
 LLAMA_API_KEY = "sk-no-key-required"
 MCP_SERVER_URLS = [
     "http://10.200.71.180:2527/sse",
-    "http://10.200.71.180:2528/sse",
+    "http://10.200.71.180:2528/sse"
 ]
 
 WHISPER_MODEL = "models/whisper-medium"
+WHISPER_DEVICE = "cuda" if has_cuda else "cpu" # TAKES EITHER "cuda" OR "cpu"
 
 TTS_MODEL_EN = "models/TTS-CORI-EN/en_GB-cori-high.onnx"
 TTS_CONFIG_EN = "models/TTS-CORI-EN/en_GB-cori-high.onnx.json"
@@ -53,7 +55,7 @@ logger = logging.getLogger("Pipeline")
 
 # --- Load models ---
 try:
-    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+    model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type="int8")
     logger.info("Loaded Whisper model.")
 except Exception as e:
     logger.error(f"Failed to load Whisper model: {e}")
