@@ -45,11 +45,11 @@ MODELS_TO_DOWNLOAD = {
     "MEDGEMMA_MODEL": {
         "local_path": "models/MedGemma/MedGemma-3b-it-Q4_K_M.gguf",
         "url": "https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-3b-it-Q4_K_M.gguf"
+    },
+    "MEDGEMMA_PROJ": {
+        "local_path": "models/MedGemma/MedGemma-mmproj.gguf",
+        "url": "https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-mmproj.gguf"
     }
-#    "MEDGEMMA_PROJ": {
-#        "local_path": "models/MedGemma/MedGemma-mmproj.gguf",
-#        "url": "https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-mmproj.gguf"
-#    }
 }
 
 def download_file(url, destination):
