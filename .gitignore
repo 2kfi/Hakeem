@@ -1,2 +1,5 @@
 .venv/
-models/
+models/TTS-CORI-EN
+models/TTS-KAREEM-ARABIC
+models/whisper-medium
+models/MedGemma
