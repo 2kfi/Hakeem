@@ -1,3 +1,5 @@
+import reqirements;reqirements.install_requirements()
+import downloader; downloader.main()
 import asyncio
 import io
 import json
