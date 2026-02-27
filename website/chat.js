@@ -97,13 +97,54 @@ function showPage(pageId) {
 function saveSettings() {
     const apiUrl = document.getElementById('api-url').value;
     const systemPrompt = document.getElementById('system-prompt').value;
+    const saveBtn = document.querySelector('#settings-modal .btn-primary');
 
-    // Save to browser memory
     localStorage.setItem('hakeem-api-url', apiUrl);
     localStorage.setItem('hakeem-system-prompt', systemPrompt);
 
-    console.log("Settings saved to local storage!");
+    // Visual feedback: Change button text briefly
+    const originalText = saveBtn.innerText;
+    saveBtn.innerText = "Saved! ✅";
     
-    // Close the modal
+    setTimeout(() => {
+        saveBtn.innerText = originalText;
+        document.getElementById('settings-modal').close();
+    }, 600);
+}
+// Function to trigger the "drop-down" notification
+function showToast(message) {
+    // 1. Create the element
+    const toast = document.createElement('div');
+    toast.className = 'notification-bubble';
+    toast.innerHTML = `<span>${message}</span>`;
+    document.body.appendChild(toast);
+
+    // 2. Trigger the animation (the 'show' class)
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+
+    // 3. Remove it after 3 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+        // Wait for animation to finish before removing from DOM
+        setTimeout(() => {
+            toast.remove();
+        }, 500);
+    }, 2500);
+}
+
+// Updated Save Settings Function
+function saveSettings() {
+    const apiUrl = document.getElementById('api-url').value;
+    const systemPrompt = document.getElementById('system-prompt').value;
+
+    localStorage.setItem('hakeem-api-url', apiUrl);
+    localStorage.setItem('hakeem-system-prompt', systemPrompt);
+
+    // Close the modal immediately
     document.getElementById('settings-modal').close();
+
+    // Fire the cool notification!
+    showToast("Settings saved successfully! 🚀");
 }

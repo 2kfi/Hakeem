@@ -132,15 +132,49 @@ body.chat-page {
 }
 
 /* Settings Modal (Dialog) */
-dialog {
+dialog#settings-modal {
+    /* 1. Reset browser defaults */
     border: none;
-    border-radius: 16px;
+    padding: 2rem;
+    margin: 0; /* Important: remove browser auto-margins */
+    
+    /* 2. Dead-center positioning */
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    
+    /* 3. Look and feel */
+    width: 90%;
+    max-width: 450px;
     background: var(--card-bg);
     color: var(--text);
-    padding: 2rem;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
-    width: 90%;
-    max-width: 500px;
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    z-index: 1001; /* Ensure it stays above the navbar */
+}
+
+/* Make the background blur even nicer */
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); /* Safari support */
+}
+
+/* Optional: Add a smooth scale-in animation */
+dialog[open] {
+    animation: modal-zoom 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modal-zoom {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
 }
 
 dialog::backdrop {
@@ -162,4 +196,36 @@ dialog::backdrop {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+}
+.notification-bubble {
+    position: fixed;
+    top: -100px; /* Start off-screen */
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary);
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 50px;
+    font-weight: 600;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    transition: top 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.notification-bubble.show {
+    top: 30px; /* Drop down to this position */
+}
+
+/* Success glow */
+.notification-bubble::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50px;
+    box-shadow: 0 0 20px var(--primary);
+    opacity: 0.5;
+    z-index: -1;
 }
