@@ -1,0 +1,263 @@
+/* 1. VARIABLES & THEMES */
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    
+    /* Light Theme (Default) */
+    --bg: #ffffff;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --gray-light: #f8fafc;
+    --border: #e2e8f0;
+    --card-bg: #ffffff; 
+    --nav-bg: rgba(255, 255, 255, 0.8);
+    --glow-opacity: 0.2;
+}
+
+[data-theme="dark"] {
+    --bg: #000000;         /* AMOLED Black */
+    --text: #f1f5f9;
+    --text-light: #94a3b8;
+    --gray-light: #0a0a0a; /* Slightly lighter than pure black for sections */
+    --border: #1e293b;
+    --card-bg: #111111;    /* Deep gray for boxes on black background */
+    --nav-bg: rgba(0, 0, 0, 0.8);
+    --glow-opacity: 0.4;   /* Make glow stronger on dark mode */
+}
+
+/* 2. RESET & BASE STYLES */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background-color: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 3. NAVIGATION */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 5%;
+    background-color: var(--nav-bg);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.logo {
+    font-weight: 800;
+    font-size: 1.5rem;
+    letter-spacing: -1px;
+    color: var(--primary);
+}
+
+.nav-links {
+    display: flex;
+    gap: 1.2rem;
+    align-items: center;
+}
+
+.nav-links a {
+    text-decoration: none;
+    color: var(--text-light);
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.nav-links a:hover {
+    color: var(--primary);
+}
+
+/* 4. BUTTONS */
+button {
+    cursor: pointer;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: 0.2s;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 0.6rem 1.2rem;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text);
+    padding: 0.6rem 1.2rem;
+}
+
+.btn-secondary:hover {
+    background: var(--gray-light);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--border);
+    color: var(--text);
+    padding: 0.6rem 1.2rem;
+}
+
+.btn-lg {
+    padding: 0.8rem 2rem;
+    font-size: 1rem;
+}
+
+/* 5. HERO SECTION */
+.hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5rem 5%;
+    flex: 1; /* Pushes footer down */
+}
+
+.hero-content {
+    max-width: 600px;
+}
+
+.hero-content h1 {
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    font-weight: 800;
+}
+
+.hero-content p {
+    font-size: 1.25rem;
+    color: var(--text-light);
+    margin-bottom: 2.5rem;
+}
+
+.hero-btns {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Visual Glow Logic */
+.hero-visual {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.abstract-shape {
+    width: 350px;
+    height: 350px;
+    background: linear-gradient(45deg, var(--primary), #60a5fa);
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    filter: blur(50px);
+    opacity: var(--glow-opacity);
+    animation: morph 8s ease-in-out infinite;
+}
+
+@keyframes morph {
+    0% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
+    50% { border-radius: 50% 50% 20% 80% / 25% 80% 20% 75%; }
+    100% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
+}
+
+/* 6. FEATURES SECTION */
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+    padding: 5rem 5%;
+    background-color: var(--gray-light);
+}
+
+.feature-card {
+    background-color: var(--card-bg);
+    padding: 2.5rem;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    transition: transform 0.3s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+}
+
+.feature-card h3 {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.feature-card p {
+    color: var(--text-light);
+}
+
+/* 7. FOOTER */
+.site-footer {
+    background-color: var(--gray-light);
+    padding: 4rem 5% 2rem 5%;
+    border-top: 1px solid var(--border);
+}
+
+.footer-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 3rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.footer-col h4 {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    font-weight: 700;
+}
+
+.footer-col p, .footer-col ul li a {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.footer-col ul { list-style: none; }
+.footer-col ul li { margin-bottom: 0.8rem; }
+.footer-col ul li a:hover { color: var(--primary); }
+
+.footer-bottom {
+    text-align: center;
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.8rem;
+    color: var(--text-light);
+}
+
+/* 8. RESPONSIVE */
+@media (max-width: 968px) {
+    .hero { flex-direction: column; text-align: center; padding-top: 2rem; }
+    .hero-content { margin-bottom: 3rem; }
+    .hero-btns { justify-content: center; }
+}
