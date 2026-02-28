@@ -16,3 +16,4 @@ openwakeword
 uvicorn
 python-multipart
 uvicorn
+flask

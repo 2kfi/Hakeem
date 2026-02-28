@@ -4,15 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hakeem | Chat</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="chat.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/chat.css">
+    <link rel="stylesheet" href="/static/responsive.css">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('hakeem-theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
 </head>
 <body class="chat-page">
 
     <nav class="navbar">
-        <div class="logo" onclick="window.location.href='index.html'" style="cursor:pointer">HAKEEM</div>
+        <div class="logo" onclick="window.location.href='/'" style="cursor:pointer">HAKEEM</div>
         <div class="nav-links">
-            <a href="index.html#features">Features</a>
+            <button id="sidebar-toggle" class="btn-secondary" title="Toggle Sidebar">☰</button>
+            <a href="/#features">Features</a>
             <button id="theme-toggle" class="btn-secondary" title="Toggle Theme">🌙</button>
             <button class="btn-outline" onclick="showPage('settings')">Settings</button>
         </div>
@@ -20,11 +32,11 @@
 
     <div class="chat-wrapper">
         <aside class="sidebar">
-            <button class="new-chat-btn" onclick="location.reload()">+ New Chat</button>
+            <button class="new-chat-btn">+ New Chat</button>
             <div class="chat-history" id="chat-history">
                 </div>
             <div class="sidebar-footer">
-                <button class="btn-secondary" onclick="window.location.href='index.html'">← Home</button>
+                <button class="btn-secondary" onclick="window.location.href='/'">← Home</button>
             </div>
         </aside>
 
@@ -45,7 +57,7 @@
                         </svg>
                     </button>
                 </div>
-                <p class="disclaimer">Hakeem is running on llama.cpp. Responses may vary.</p>
+                <p class="disclaimer" id="api-disclaimer">Hakeem may produce inaccurate information. Responses may vary.</p>
             </div>
         </main>
     </div>
@@ -54,11 +66,28 @@
         <div class="modal-content">
             <h2>Settings</h2>
             <div class="settings-group">
-                <label>API Endpoint:</label>
+                <label for="api-provider">API Provider</label>
+                <select id="api-provider">
+                    <option value="llama-cpp">Llama.cpp (Default)</option>
+                    <option value="openai">OpenAI API</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="api-url">API Endpoint</label>
                 <input type="text" id="api-url" value="http://localhost:8080/v1">
             </div>
             <div class="settings-group">
-                <label>System Prompt:</label>
+                <label for="api-key">API Key (if required)</label>
+                <input type="password" id="api-key" placeholder="Enter your API key">
+            </div>
+            <div class="settings-group" style="display: none;">
+                <label for="model-input">Model Name</label>
+                <input type="text" id="model-input" placeholder="e.g., gpt-4, llama2">
+            </div>
+            <div class="settings-group">
+                <label for="system-prompt">System Prompt</label>
                 <textarea id="system-prompt">You are Hakeem, a wise and helpful AI assistant.</textarea>
             </div>
             <div class="modal-actions">
@@ -68,7 +97,7 @@
         </div>
     </dialog>
 
-    <script src="app.js"></script>
-    <script src="chat.js"></script>
+    <script src="/static/app.js"></script>
+    <script src="/static/chat.js"></script>
 </body>
 </html>

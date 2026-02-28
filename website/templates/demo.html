@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request a Demo | HAKEEM AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/login.css"> <!-- Reusing login styles for the card -->
+    <link rel="stylesheet" href="/static/responsive.css">
+    <style>
+        .demo-card { max-width: 600px; }
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+    </style>
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('hakeem-theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo" onclick="window.location.href='/'" style="cursor: pointer;">HAKEEM</div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/chat">Chat</a>
+            <button id="theme-toggle" class="btn-secondary" title="Toggle Theme">🌙</button>
+        </div>
+    </nav>
+
+    <main class="auth-container">
+        <div class="login-card demo-card">
+            <div class="login-header">
+                <h2>Request a Demo</h2>
+                <p>Fill out the form below and one of our specialists will get back to you shortly.</p>
+            </div>
+
+            <form id="demoForm">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" placeholder="John Doe" required>
+                </div>
+                <div class="form-group">
+                    <label for="company">Company (Optional)</label>
+                    <input type="text" id="company" placeholder="Acme Corp.">
+                </div>
+                <div class="form-group">
+                    <label for="email">Work Email</label>
+                    <input type="email" id="email" placeholder="work@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number (Optional)</label>
+                    <input type="tel" id="phone" placeholder="+1 (555) 123-4567">
+                </div>
+                <div class="form-group">
+                    <label for="message">Your Needs</label>
+                    <textarea id="message" placeholder="Describe your interest in Hakeem AI..." required></textarea>
+                </div>
+                <button type="submit" class="btn-primary btn-lg login-btn">Submit Request</button>
+            </form>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+    <div class="footer-container">
+        <div class="footer-col">
+            <div class="logo">HAKEEM</div>
+            <p>Intelligence tailored for your needs.</p>
+        </div>
+
+        <div class="footer-col">
+            <h4>Resources</h4>
+            <ul>
+                <li><a href="/contact">Contact Us</a></li>
+                <li><a href="/about">About Us</a></li>
+                <li><a href="#">Blog</a></li>
+            </ul>
+        </div>
+
+        <div class="footer-col">
+            <h4>Sales</h4>
+            <ul>
+                <li><a href="/sales">Contact Sales</a></li>
+                <li><a href="/demo">Request a Demo</a></li>
+                <li><a href="#">Pricing Plans</a></li>
+            </ul>
+        </div>
+        
+        <div class="footer-col">
+            <h4>Our Office</h4>
+            <p>123 Innovation Way<br>
+               Tech District, Suite 400<br>
+               San Francisco, CA 94105</p>
+        </div>
+    </div>
+    
+    <div class="footer-bottom">
+        <p>&copy; 2026 Nullnet. All rights reserved.</p>
+    </div>
+</footer>
+    
+    <script src="/static/app.js"></script>
+    <script>
+        document.getElementById('demoForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            // In a real app, this would send data to the backend.
+            // For now, we'll just show a notification.
+            const btn = e.target.querySelector('button');
+            btn.disabled = true;
+            btn.innerText = 'Submitting...';
+
+            setTimeout(() => {
+                showToast('Demo request submitted! We will contact you soon. ✅');
+                btn.disabled = false;
+                btn.innerText = 'Submit Request';
+                e.target.reset();
+            }, 1500);
+        });
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'notification-bubble show';
+            toast.innerHTML = `<span>${message}</span>`;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 500);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

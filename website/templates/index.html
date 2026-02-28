@@ -4,7 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hakeem | Your AI Assistant</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/responsive.css">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('hakeem-theme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
 </head>
 <body>
 
@@ -13,8 +24,8 @@
         <div class="nav-links">
             <button id="theme-toggle" class="btn-secondary" title="Toggle Theme">🌙</button>
             <a href="#features">Features</a>
-            <button class="btn-secondary" onclick="showPage('login')">Login</button>
-            <button class="btn-primary" onclick="showPage('chat')">Get Started</button>
+            <button class="btn-secondary" onclick="window.location.href='/login'">Login</button>
+            <button class="btn-primary" onclick="window.location.href='/chat'">Get Started</button>
         </div>
     </nav>
 
@@ -23,8 +34,8 @@
             <h1>Intelligence tailored for your needs.</h1>
             <p>Experience Hakeem, a sophisticated AI interface designed for clarity, speed, and wisdom.</p>
             <div class="hero-btns">
-                <button class="btn-primary btn-lg" onclick="showPage('chat')">Start Chatting</button>
-                <button class="btn-outline btn-lg">Learn More</button>
+                <button class="btn-primary btn-lg" onclick="window.location.href='/chat'">Start Chatting</button>
+                <button class="btn-outline btn-lg" onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})">Learn More</button>
             </div>
         </div>
         <div class="hero-visual">
@@ -53,18 +64,20 @@
         </div>
 
         <div class="footer-col">
-            <h4>Contact Us</h4>
+            <h4>Resources</h4>
             <ul>
-                <li><a href="mailto:support@hakeem.nullnet.jo">support@hakeem.nullnet.jo</a></li>
-                <li><a href="tel:+962798314719">+962798314719</a></li>
+                <li><a href="/contact">Contact Us</a></li>
+                <li><a href="/about">About Us</a></li>
+                <li><a href="/team">Team Members</a></li>
+                <li><a href="#">Blog</a></li>
             </ul>
         </div>
 
         <div class="footer-col">
             <h4>Sales</h4>
             <ul>
-                <li><a href="#">Contact Sales</a></li>
-                <li><a href="#">Request a Demo</a></li>
+                <li><a href="/sales">Contact Sales</a></li>
+                <li><a href="/demo">Request a Demo</a></li>
                 <li><a href="#">Pricing Plans</a></li>
             </ul>
         </div>
@@ -78,9 +91,20 @@
     </div>
     
     <div class="footer-bottom">
-        <p>&copy; 2024 Hakeem AI. All rights reserved.</p>
+        <p>&copy; 2026 Nullnet. All rights reserved.</p>
     </div>
 </footer>
-    <script src="app.js"></script>
+    <script src="/static/app.js"></script>
+    <script>
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+    </script>
 </body>
 </html>

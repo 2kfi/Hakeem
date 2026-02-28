@@ -1,9 +1,3 @@
-function showPage(pageId) {
-    // If you stay on one HTML file, you'd hide/show divs here.
-    // Since you're using multiple files:
-    window.location.href = `${pageId}.html`;
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     const themeToggle = document.getElementById('theme-toggle');
     const htmlElement = document.documentElement;
@@ -16,14 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initial Detection
-    const savedTheme = localStorage.getItem('hakeem-theme');
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    if (savedTheme) {
-        applyTheme(savedTheme);
-    } else if (systemPrefersDark) {
-        applyTheme('dark');
+    // Initialize toggle icon
+    const currentTheme = htmlElement.getAttribute('data-theme') || 'light';
+    if (themeToggle) {
+        themeToggle.innerHTML = currentTheme === 'dark' ? '☀️' : '🌙';
     }
 
     // Toggle Click
