@@ -1,0 +1,112 @@
+/* Global Layout Styles */
+.layout-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+}
+
+/* Fix for Sidebar transition */
+.sidebar {
+  transition: width 0.3s ease, transform 0.3s ease;
+  overflow: hidden;
+}
+
+.sidebar.closed {
+  width: 0;
+  padding: 0;
+  border: none;
+  transform: translateX(-100%);
+}
+
+.sidebar.open {
+  width: 280px;
+  transform: translateX(0);
+}
+
+/* Settings Modal Overlay */
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: var(--card-bg);
+  padding: 2rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Markdown Styling in Messages */
+.message-content pre {
+  background: var(--bg);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.message-content code {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+.message-content p {
+  margin-bottom: 0.5rem;
+}
+
+.message-content ul, .message-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+/* Chat Actions */
+.chat-actions {
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.history-item:hover .chat-actions {
+  opacity: 1;
+}
+
+.delete-chat, .edit-chat {
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 4px;
+}
+
+.delete-chat:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Content Page Padding */
+.content-page h1, .content-page h2, .content-page h3 {
+  margin-bottom: 1.5rem;
+  color: var(--primary);
+}
+
+.content-page p {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
