@@ -1,3 +1,0 @@
-Flask>=2.0
-markdown-it-py[plugins]>=3.0.0
-mdit_py_plugins>=0.4.0
