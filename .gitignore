@@ -6,3 +6,4 @@ models/MedGemma
 __pycache__
 MCP-servers/simple-calc
 Docker-files/.env
+oepnWakeWord
