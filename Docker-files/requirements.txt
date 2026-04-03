@@ -15,5 +15,6 @@ requests
 openwakeword
 uvicorn
 python-multipart
-uvicorn
 flask
+pyyaml
+tqdm
