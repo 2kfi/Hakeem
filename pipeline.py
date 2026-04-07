@@ -17,7 +17,7 @@ import uuid
 import wave
 import uvicorn
 from contextlib import asynccontextmanager, AsyncExitStack
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
@@ -79,9 +79,9 @@ LLAMA_API_KEY = config.llm_api_key
 LLAMA_MODEL = config.llm_model
 MCP_SERVER_URLS = config.mcp_servers
 
-whisper_model = None
-voice_EN = None
-voice_AR = None
+whisper_model: Optional[WhisperModel] = None
+voice_EN: Optional[PiperVoice] = None
+voice_AR: Optional[PiperVoice] = None
 
 try:
     whisper_model = WhisperModel(
@@ -111,8 +111,9 @@ except Exception:
 
 
 class MCPSessionManager:
-    def __init__(self, url: str):
+    def __init__(self, url: str, timeout: float = 30.0):
         self.url = url
+        self.timeout = timeout
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self.tools: List[Any] = []
@@ -153,7 +154,9 @@ class MCPSessionManager:
     async def call_tool(self, name: str, arguments: dict) -> Any:
         if not self.connected or not self.session:
             await self.connect()
-        return await self.session.call_tool(name, arguments=arguments)
+        return await asyncio.wait_for(
+            self.session.call_tool(name, arguments=arguments), timeout=self.timeout
+        )
 
 
 class MCPWrapper:
@@ -263,32 +266,48 @@ class MCPWrapper:
         }
 
     async def run_query(self, stt_input: str) -> str:
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a concise voice assistant. Give short, natural answers. "
-                "Avoid bold text, markdown lists, or long explanations unless asked.",
-            },
-            {"role": "user", "content": stt_input},
-        ]
+        system_msg = {
+            "role": "system",
+            "content": "You are a concise voice assistant. Give short, natural answers. "
+            "Avoid bold text, markdown lists, or long explanations unless asked.",
+        }
+        user_msg = {"role": "user", "content": stt_input}
+
+        messages = [system_msg, user_msg]
 
         max_tool_loops = 5
         for i in range(max_tool_loops):
             try:
+                tools_schema = self.openai_tools_schema
                 response = await self.llama.chat.completions.create(
                     model=self.llama_model,
                     messages=messages,
-                    tools=self.openai_tools_schema
-                    if self.openai_tools_schema
-                    else None,
-                    tool_choice="auto" if self.openai_tools_schema else None,
+                    tools=tools_schema if tools_schema else None,
+                    tool_choice="auto" if tools_schema else None,
                 )
             except Exception as e:
                 logger.error(f"LLM call failed at step {i}: {e}")
                 raise RuntimeError(f"LLM API call failed: {e}")
 
             message = response.choices[0].message
-            messages.append(message)
+
+            msg_dict: Dict[str, Any] = {
+                "role": message.role,
+                "content": message.content or "",
+            }
+            if message.tool_calls:
+                msg_dict["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in message.tool_calls
+                ]
+            messages.append(msg_dict)
 
             if not message.tool_calls:
                 return message.content or ""
@@ -299,7 +318,8 @@ class MCPWrapper:
             messages.extend(tool_results)
 
         logger.warning(f"Tool loop exceeded {max_tool_loops} iterations")
-        return messages[-1].content or ""
+        final_msg = messages[-1]
+        return final_msg.get("content", "") if isinstance(final_msg, dict) else ""
 
     async def close(self):
         await asyncio.gather(*(mgr.close() for mgr in self.mcp_managers))
@@ -332,6 +352,8 @@ async def health_check():
 
 
 def stt_transcribe(audio_file) -> Tuple[str, str]:
+    if whisper_model is None:
+        raise RuntimeError("Whisper model not loaded")
     segments, info = whisper_model.transcribe(
         audio_file,
         vad_filter=WHISPER_VAD_FILTER,
@@ -356,6 +378,9 @@ async def tts_synthesize(text: Optional[str], lang: str) -> io.BytesIO:
     if lang:
         use_ar = str(lang).lower().startswith("ar")
     voice = voice_AR if (use_ar and voice_AR is not None) else voice_EN
+
+    if voice is None:
+        raise RuntimeError("No TTS voice available")
 
     t = (text or "").strip() or " "
 
@@ -384,6 +409,27 @@ async def tts_synthesize(text: Optional[str], lang: str) -> io.BytesIO:
         raise RuntimeError(f"TTS synthesis failed: {e}") from e
 
 
+ALLOWED_AUDIO_FORMATS = {
+    "audio/wav",
+    "audio/wave",
+    "audio/x-wav",
+    "audio/pcm",
+    "audio/ogg",
+}
+MAX_AUDIO_SIZE = 50 * 1024 * 1024
+MIN_AUDIO_SIZE = 100
+
+
+def _validate_audio_format(filename: str, content_type: str) -> bool:
+    if content_type and content_type.lower() in ALLOWED_AUDIO_FORMATS:
+        return True
+    if filename and filename.lower().endswith(
+        (".wav", ".wave", ".ogg", ".flac", ".mp3")
+    ):
+        return True
+    return False
+
+
 @app.post("/process-audio")
 async def process_audio(file: UploadFile = File(...)):
     request_id = uuid.uuid4().hex
@@ -392,22 +438,28 @@ async def process_audio(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    if file.size and file.size > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+    content_type = file.content_type or ""
+    if not _validate_audio_format(file.filename, content_type):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid audio format. Allowed: wav, wave, ogg, flac, mp3",
+        )
 
     audio_data = None
-    llm_input = ""
-    stt_lang = "en"
-
     try:
         audio_data = await file.read()
-        if len(audio_data) < 100:
-            raise ValueError("Audio file too small")
-        import io as io_module
+        audio_size = len(audio_data)
 
-        audio_file = io_module.BytesIO(audio_data)
+        if audio_size > MAX_AUDIO_SIZE:
+            raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+        if audio_size < MIN_AUDIO_SIZE:
+            raise HTTPException(status_code=400, detail="Audio file too small")
+
+        audio_file = io.BytesIO(audio_data)
         llm_input, stt_lang = await asyncio.to_thread(stt_transcribe, audio_file)
         logger.info(f"[{request_id}] STT: {llm_input}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[{request_id}] STT failed: {e}")
         raise HTTPException(status_code=400, detail=f"STT failed: {str(e)}")
