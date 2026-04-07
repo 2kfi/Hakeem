@@ -2,11 +2,49 @@ import os
 import sys
 import logging
 from pathlib import Path
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Dict, Any, Tuple
 import yaml
 
 CONFIG_DIR = Path(__file__).parent
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
+
+PRESETS = {
+    "default": {
+        "stt": {"model": "medium"},
+        "tts": {
+            "en": {"voice": "en_GB/cori/high"},
+            "ar": {"voice": "ar_JO/kareem/medium"},
+        },
+        "compute_type": "int8",
+    },
+    "lightweight": {
+        "stt": {"model": "small"},
+        "tts": {"en": {"voice": "en_GB/cori/high"}},
+        "compute_type": "int8",
+    },
+    "heavy": {
+        "stt": {"model": "large-v3"},
+        "tts": {
+            "en": {"voice": "en_GB/cori/high"},
+            "ar": {"voice": "ar_JO/kareem/medium"},
+        },
+        "compute_type": "float16",
+    },
+}
+
+STT_FILES = ["model.bin", "config.json", "vocabulary.txt", "tokenizer.json"]
+
+TTS_FILE_MAP = {
+    "en_GB/cori/high": ["en_GB-cori-high.onnx", "en_GB-cori-high.onnx.json"],
+    "en_GB/southern_english_female/high": [
+        "en_GB-southern_english_female-high.onnx",
+        "en_GB-southern_english_female-high.onnx.json",
+    ],
+    "ar_JO/kareem/medium": [
+        "ar_JO-kareem-medium.onnx",
+        "ar_JO-kareem-medium.onnx.json",
+    ],
+}
 
 
 def _detect_gpu() -> str:
@@ -21,20 +59,59 @@ def _detect_gpu() -> str:
     return "cpu"
 
 
+def _resolve_tts_files(voice: str) -> List[str]:
+    if voice in TTS_FILE_MAP:
+        return TTS_FILE_MAP[voice]
+    voice_name = voice.split("/")[-1].replace("/", "-")
+    return [f"{voice_name}.onnx", f"{voice_name}.onnx.json"]
+
+
 def _load_yaml() -> Dict[str, Any]:
     if not CONFIG_FILE.exists():
         print(f"[ERROR] config.yaml not found at {CONFIG_FILE}", file=sys.stderr)
         sys.exit(1)
 
     with open(CONFIG_FILE, "r") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 class Config:
     def __init__(self, yaml_config: Dict[str, Any]):
         self._yaml = yaml_config
+        preset_from_env = os.environ.get("PRESET")
+        self._preset = preset_from_env or self._yaml.get("preset", "default")
+        self._apply_preset()
         self._apply_env_overrides()
         self._detect_device()
+
+    def _apply_preset(self):
+        preset = PRESETS.get(self._preset, PRESETS["default"])
+
+        if "stt" not in self._yaml:
+            self._yaml["stt"] = {}
+        if "tts" not in self._yaml:
+            self._yaml["tts"] = {}
+        if "en" not in self._yaml["tts"]:
+            self._yaml["tts"]["en"] = {}
+        if "ar" not in self._yaml["tts"]:
+            self._yaml["tts"]["ar"] = {}
+
+        stt_user_keys = set(self._yaml["stt"].keys())
+        for key, value in preset.get("stt", {}).items():
+            if key not in stt_user_keys:
+                self._yaml["stt"][key] = value
+
+        for lang in ["en", "ar"]:
+            tts_user_keys = set(self._yaml["tts"].get(lang, {}).keys())
+            preset_tts = preset.get("tts", {}).get(lang, {})
+            for key, value in preset_tts.items():
+                if key not in tts_user_keys:
+                    self._yaml["tts"][lang][key] = value
+
+        if "compute_type" not in self._yaml.get("stt", {}):
+            self._yaml["stt"]["compute_type"] = preset.get("compute_type", "int8")
+        elif self._yaml["stt"].get("compute_type") is None:
+            self._yaml["stt"]["compute_type"] = preset.get("compute_type", "int8")
 
     def _apply_env_overrides(self):
         overrides = {
@@ -44,8 +121,9 @@ class Config:
                 "log_level": "APP_LOG_LEVEL",
             },
             "stt": {
+                "repo": "STT_REPO",
+                "model": "STT_MODEL",
                 "model_path": "STT_MODEL_PATH",
-                "variant": "STT_VARIANT",
                 "device": "STT_DEVICE",
                 "compute_type": "STT_COMPUTE_TYPE",
                 "beam_size": "STT_BEAM_SIZE",
@@ -53,12 +131,16 @@ class Config:
             },
             "tts": {
                 "en": {
-                    "model": "TTS_EN_MODEL",
-                    "config": "TTS_EN_CONFIG",
+                    "repo": "TTS_EN_REPO",
+                    "voice": "TTS_EN_VOICE",
+                    "model_path": "TTS_EN_MODEL_PATH",
+                    "config_path": "TTS_EN_CONFIG_PATH",
                 },
                 "ar": {
-                    "model": "TTS_AR_MODEL",
-                    "config": "TTS_AR_CONFIG",
+                    "repo": "TTS_AR_REPO",
+                    "voice": "TTS_AR_VOICE",
+                    "model_path": "TTS_AR_MODEL_PATH",
+                    "config_path": "TTS_AR_CONFIG_PATH",
                 },
                 "settings": {
                     "volume": "TTS_VOLUME",
@@ -87,12 +169,12 @@ class Config:
 
         self._apply_nested_overrides(self._yaml, overrides)
 
-    def _apply_nested_overrides(self, config: Dict, overrides: Dict, prefix: str = ""):
+    def _apply_nested_overrides(self, config: Dict, overrides: Dict):
         for key, env_key in overrides.items():
             if isinstance(env_key, dict):
                 if key not in config:
                     config[key] = {}
-                self._apply_nested_overrides(config[key], env_key, f"{prefix}{key}_")
+                self._apply_nested_overrides(config[key], env_key)
             else:
                 env_value = os.environ.get(env_key)
                 if env_value is not None:
@@ -121,6 +203,10 @@ class Config:
             print(f"[CONFIG] Auto-detected GPU device: {detected}")
 
     @property
+    def preset(self) -> str:
+        return self._preset
+
+    @property
     def app_host(self) -> str:
         return self._yaml.get("app", {}).get("host", "0.0.0.0")
 
@@ -133,12 +219,16 @@ class Config:
         return self._yaml.get("app", {}).get("log_level", "INFO")
 
     @property
-    def stt_model_path(self) -> str:
-        return self._yaml.get("stt", {}).get("model_path", "models/whisper-medium")
+    def stt_repo(self) -> str:
+        return self._yaml.get("stt", {}).get("repo", "Systran/faster-whisper")
 
     @property
-    def stt_variant(self) -> str:
-        return self._yaml.get("stt", {}).get("variant", "medium")
+    def stt_model(self) -> str:
+        return self._yaml.get("stt", {}).get("model", "medium")
+
+    @property
+    def stt_model_path(self) -> Optional[str]:
+        return self._yaml.get("stt", {}).get("model_path")
 
     @property
     def stt_device(self) -> str:
@@ -157,20 +247,36 @@ class Config:
         return self._yaml.get("stt", {}).get("vad_filter", True)
 
     @property
-    def tts_en_model(self) -> str:
-        return self._yaml.get("tts", {}).get("en", {}).get("model", "")
+    def tts_en_repo(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("en", {}).get("repo")
 
     @property
-    def tts_en_config(self) -> str:
-        return self._yaml.get("tts", {}).get("en", {}).get("config", "")
+    def tts_en_voice(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("en", {}).get("voice")
 
     @property
-    def tts_ar_model(self) -> str:
-        return self._yaml.get("tts", {}).get("ar", {}).get("model", "")
+    def tts_en_model_path(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("en", {}).get("model_path")
 
     @property
-    def tts_ar_config(self) -> str:
-        return self._yaml.get("tts", {}).get("ar", {}).get("config", "")
+    def tts_en_config_path(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("en", {}).get("config_path")
+
+    @property
+    def tts_ar_repo(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("ar", {}).get("repo")
+
+    @property
+    def tts_ar_voice(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("ar", {}).get("voice")
+
+    @property
+    def tts_ar_model_path(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("ar", {}).get("model_path")
+
+    @property
+    def tts_ar_config_path(self) -> Optional[str]:
+        return self._yaml.get("tts", {}).get("ar", {}).get("config_path")
 
     @property
     def tts_volume(self) -> float:
@@ -233,47 +339,80 @@ class Config:
     def models_download_on_startup(self) -> bool:
         return self._yaml.get("models", {}).get("download_on_startup", True)
 
-    @property
-    def model_urls(self) -> Dict[str, Any]:
-        return self._yaml.get("models", {}).get("urls", {})
+    def get_stt_urls(self) -> List[Tuple[str, str]]:
+        if self.stt_model_path:
+            return []
 
-    def get_whisper_urls(self) -> List[tuple]:
-        urls_config = self.model_urls.get("whisper", {})
-        base = urls_config.get("base", "").format(variant=self.stt_variant)
-        files = urls_config.get("files", [])
-        return [(f"{base}/{f}", f"{self.stt_model_path}/{f}") for f in files]
+        repo = self.stt_repo
+        model = self.stt_model
+        base_url = f"https://huggingface.co/{repo}/resolve/main"
+        storage = self.models_storage_path
 
-    def get_tts_en_urls(self) -> List[tuple]:
-        urls_config = self.model_urls.get("tts_en", {})
-        base = urls_config.get("base", "")
-        files = urls_config.get("files", [])
+        files = STT_FILES
+        return [(f"{base_url}/{f}", f"{storage}/whisper-{model}/{f}") for f in files]
+
+    def get_tts_en_urls(self) -> List[Tuple[str, str]]:
+        if self.tts_en_model_path:
+            return []
+
+        repo = self.tts_en_repo
+        voice = self.tts_en_voice
+        if not repo or not voice:
+            return []
+
+        base_url = f"https://huggingface.co/{repo}/resolve/main/{voice}"
+        storage = self.models_storage_path
+
+        files = _resolve_tts_files(voice)
+        voice_folder = voice.replace("/", "-")
         return [
-            (
-                f"{base}/{f}",
-                f"{self.tts_en_model.replace(self.tts_en_model.split('/')[-1], '')}{f}",
-            )
-            for f in files
+            (f"{base_url}/{f}", f"{storage}/TTS-EN-{voice_folder}/{f}") for f in files
         ]
 
-    def get_tts_ar_urls(self) -> List[tuple]:
-        urls_config = self.model_urls.get("tts_ar", {})
-        base = urls_config.get("base", "")
-        files = urls_config.get("files", [])
+    def get_tts_ar_urls(self) -> List[Tuple[str, str]]:
+        if self.tts_ar_model_path:
+            return []
+
+        repo = self.tts_ar_repo
+        voice = self.tts_ar_voice
+        if not repo or not voice:
+            return []
+
+        base_url = f"https://huggingface.co/{repo}/resolve/main/{voice}"
+        storage = self.models_storage_path
+
+        files = _resolve_tts_files(voice)
+        voice_folder = voice.replace("/", "-")
         return [
-            (
-                f"{base}/{f}",
-                f"{self.tts_ar_model.replace(self.tts_ar_model.split('/')[-1], '')}{f}",
-            )
-            for f in files
+            (f"{base_url}/{f}", f"{storage}/TTS-AR-{voice_folder}/{f}") for f in files
         ]
 
-    def get_medgemma_urls(self) -> List[tuple]:
-        urls_config = self.model_urls.get("medgemma", {})
-        base = urls_config.get("base", "")
-        files = urls_config.get("files", [])
-        return [
-            (f"{base}/{f}", f"{self.models_storage_path}/MedGemma/{f}") for f in files
-        ]
+    def get_final_stt_path(self) -> str:
+        if self.stt_model_path:
+            return self.stt_model_path
+        return f"{self.models_storage_path}/whisper-{self.stt_model}"
+
+    def get_final_tts_en_paths(self) -> Tuple[str, str]:
+        if self.tts_en_model_path and self.tts_en_config_path:
+            return self.tts_en_model_path, self.tts_en_config_path
+
+        voice = self.tts_en_voice
+        if not voice:
+            return "", ""
+        voice_folder = voice.replace("/", "-")
+        base = f"{self.models_storage_path}/TTS-EN-{voice_folder}"
+        return f"{base}/{voice_folder}.onnx", f"{base}/{voice_folder}.onnx.json"
+
+    def get_final_tts_ar_paths(self) -> Tuple[str, str]:
+        if self.tts_ar_model_path and self.tts_ar_config_path:
+            return self.tts_ar_model_path, self.tts_ar_config_path
+
+        voice = self.tts_ar_voice
+        if not voice:
+            return "", ""
+        voice_folder = voice.replace("/", "-")
+        base = f"{self.models_storage_path}/TTS-AR-{voice_folder}"
+        return f"{base}/{voice_folder}.onnx", f"{base}/{voice_folder}.onnx.json"
 
 
 _config: Optional[Config] = None

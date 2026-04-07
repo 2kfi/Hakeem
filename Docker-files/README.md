@@ -6,8 +6,8 @@ A Docker-ready voice processing pipeline with STT (Speech-to-Text), LLM (Languag
 
 ```
 ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  Audio  │───▶│   STT   │───▶│   LLM   │───▶│   TTS   │
-│ Input   │    │ Whisper │    │ (MCP)   │    │  Piper  │
+│  Audio │───▶│   STT   │───▶│   LLM  │───▶│   TTS   │
+│ Input  │    │ Whisper │    │ (MCP)  │    │  Piper  │
 └─────────┘    └─────────┘    └─────────┘    └─────────┘
                     │              │              │
                     └──────────────┴──────────────┘
@@ -52,38 +52,58 @@ docker run -p 8003:8003 \
 ### Bare Metal
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+cd Docker-files
 
-# Run
+# Option 1: Auto-download models (internet required)
+python pipeline.py
+
+# Option 2: Use existing models from parent directory
+# Copy the baremetal config example:
+cp config.baremetal.example config.yaml
 python pipeline.py
 ```
 
 ## Configuration
 
-### Environment Variables
+### Presets (Recommended)
 
-Copy `.env.example` to `.env` and customize:
+The easiest way to configure - just choose a preset:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `APP_HOST` | `0.0.0.0` | Server host |
-| `APP_PORT` | `8003` | Server port |
-| `APP_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
-| `STT_MODEL_PATH` | `models/whisper-medium` | Whisper model path |
-| `STT_VARIANT` | `medium` | Whisper variant (tiny, small, medium, large) |
-| `STT_DEVICE` | `auto` | Device (auto, cpu, cuda, rocm) |
-| `STT_COMPUTE_TYPE` | `int8` | Compute type (int8, float16) |
-| `TTS_EN_MODEL` | `models/TTS-CORI-EN/...` | English TTS model |
-| `TTS_AR_MODEL` | `models/TTS-KAREEM-ARABIC/...` | Arabic TTS model |
-| `LLM_API_URL` | `http://10.200.71.180:2312/v1` | LLM API URL |
-| `LLM_API_KEY` | `sk-no-key-required` | LLM API key |
-| `MCP_SERVER_URLS` | `http://10.200.71.180:2527/sse,...` | MCP server URLs (comma-separated) |
-| `MODELS_DOWNLOAD_ON_STARTUP` | `false` | Download models on startup |
+```yaml
+# config.yaml
+preset: "default"  # or "lightweight" or "heavy"
+```
 
-### Using config.yaml
+| Preset | STT Model | Voices | Compute | Best For |
+|--------|-----------|--------|---------|----------|
+| `default` | whisper-medium | EN + AR | int8 | Good CPU/GPU |
+| `lightweight` | whisper-small | EN only | int8 | Weak CPU |
+| `heavy` | whisper-large-v3 | EN + AR | float16 | Powerful GPU |
 
-All settings can also be configured in `config.yaml`. Environment variables take precedence over config.yaml values.
+### Override Specific Settings
+
+```yaml
+preset: "default"
+
+# Override STT
+stt:
+  repo: "Systran/faster-whisper"
+  model: "small"       # tiny/small/medium/large-v3
+  device: "auto"        # auto/cuda/rocm/cpu
+  compute_type: "int8"  # int8/float16/float32
+
+# Override TTS - use custom voice from HuggingFace
+tts:
+  en:
+    repo: "rhasspy/piper-voices"
+    voice: "en_GB/cori/high"
+
+# Or use local model (overrides repo)
+tts:
+  en:
+    model_path: "models/my-voice.onnx"
+    config_path: "models/my-voice.onnx.json"
+```
 
 ## API Endpoints
 
@@ -125,33 +145,69 @@ curl -X POST http://localhost:8003/prosess-audio-stream \
 
 ## Models
 
-### Required Models
+### Auto-Download (Recommended)
 
-Place models in a `models/` directory with this structure:
+Set `MODELS_DOWNLOAD_ON_STARTUP=true` in config.yaml to auto-download models from HuggingFace on first run.
+
+### Model Structure (After Download)
+
+With presets, models download to:
 
 ```
 models/
-├── whisper-medium/          # STT - Whisper
+├── whisper-medium/          # STT - from preset
 │   ├── model.bin
 │   ├── config.json
 │   ├── vocabulary.txt
 │   └── tokenizer.json
-├── TTS-CORI-EN/            # TTS - English
+├── TTS-EN-en_GB-cori-high/  # TTS - English
 │   ├── en_GB-cori-high.onnx
 │   └── en_GB-cori-high.onnx.json
-├── TTS-KAREEM-ARABIC/      # TTS - Arabic
-│   ├── ar_JO-kareem-medium.onnx
-│   └── ar_JO-kareem-medium.onnx.json
-├── MedGemma/               # LLM (optional)
-│   ├── MedGemma-3b-it-Q4_K_M.gguf
-│   └── MedGemma-mmproj.gguf
-└── Hakeem/                 # Wakeword (frontend, not used by pipeline)
-    └── Hakeem.tflite
+└── TTS-AR-ar_JO-kareem-medium/  # TTS - Arabic
+    ├── ar_JO-kareem-medium.onnx
+    └── ar_JO-kareem-medium.onnx.json
 ```
 
-### Model Download
+### Using Custom Models
 
-Set `MODELS_DOWNLOAD_ON_STARTUP=true` to auto-download models from HuggingFace on first run.
+#### Option 1: HuggingFace Repository
+
+```yaml
+preset: "default"
+stt:
+  repo: "your-username/whisper-model"
+  model: "small"
+
+tts:
+  en:
+    repo: "your-username/piper-voices"
+    voice: "en_US/your-voice/low"
+```
+
+#### Option 2: Local Model (Already Downloaded)
+
+```yaml
+preset: "default"
+stt:
+  model_path: "models/my-whisper"  # folder with model files
+
+tts:
+  en:
+    model_path: "models/my-voice.onnx"
+    config_path: "models/my-voice.onnx.json"
+```
+
+#### Option 3: Environment Variables
+
+```bash
+# Use lightweight preset via env
+PRESET=lightweight
+
+# Or override specific settings
+STT_MODEL=small
+TTS_EN_VOICE=en_GB/cori/high
+STT_DEVICE=cuda
+```
 
 ## GPU Support
 
@@ -261,20 +317,36 @@ docker exec -it llmsimt-pipeline curl localhost:8003/health
 ```bash
 cd Docker-files
 
-# Create models symlink to parent
-ln -s ../models models
+# Option 1: Let it auto-download models
+python pipeline.py
 
-# Set environment
-export MODELS_DOWNLOAD_ON_STARTUP=false
-export STT_MODEL_PATH=models/whisper-medium
-export TTS_EN_MODEL=models/TTS-CORI-EN/en_GB-cori-high.onnx
-export TTS_EN_CONFIG=models/TTS-CORI-EN/en_GB-cori-high.onnx.json
-export TTS_AR_MODEL=models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx
-export TTS_AR_CONFIG=models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json
-export MODELS_STORAGE_PATH=./models
+# Option 2: Use existing models (skip download)
+# Edit config.yaml:
+# models:
+#   download_on_startup: false
 
 # Run
 python pipeline.py
+```
+
+### Quick Config Changes
+
+```bash
+# Want lighter model for weak CPU?
+# Just change preset in config.yaml:
+preset: "lightweight"
+
+# Want to use your custom voice?
+# Edit config.yaml:
+preset: "default"
+tts:
+  en:
+    model_path: "models/my-voice.onnx"
+    config_path: "models/my-voice.onnx.json"
+
+# Or via environment:
+TTS_EN_MODEL_PATH=models/my-voice.onnx
+TTS_EN_CONFIG_PATH=models/my-voice.onnx.json
 ```
 
 ### Rebuilding

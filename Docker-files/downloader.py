@@ -38,40 +38,41 @@ def main():
         _check_models(config)
         return
 
-    print("--- Starting Model Integrity Check ---")
-    files_missing = 0
+    print("--- Starting Model Download ---")
+    print(f"[CONFIG] Using preset: {config.preset}")
+    files_downloaded = 0
 
     model_urls = []
-    model_urls.extend(config.get_whisper_urls())
+    model_urls.extend(config.get_stt_urls())
     model_urls.extend(config.get_tts_en_urls())
     model_urls.extend(config.get_tts_ar_urls())
-    model_urls.extend(config.get_medgemma_urls())
 
     for url, local_path in model_urls:
         if not os.path.exists(local_path):
             print(f"\n[MISSING] {local_path}")
+            print(f"[URL] {url}")
             try:
                 download_file(url, local_path)
-                files_missing += 1
+                files_downloaded += 1
             except Exception as e:
                 print(f"[ERROR] Could not download: {e}")
         else:
             print(f"[OK] Found: {local_path}")
 
-    if files_missing == 0:
+    if files_downloaded == 0:
         print("\nAll models are present. No downloads needed.")
     else:
-        print(f"\nDone! Downloaded {files_missing} file(s).")
+        print(f"\nDone! Downloaded {files_downloaded} file(s).")
 
 
 def _check_models(config):
     print("--- Checking Model Integrity ---")
+    print(f"[CONFIG] Using preset: {config.preset}")
 
     model_urls = []
-    model_urls.extend(config.get_whisper_urls())
+    model_urls.extend(config.get_stt_urls())
     model_urls.extend(config.get_tts_en_urls())
     model_urls.extend(config.get_tts_ar_urls())
-    model_urls.extend(config.get_medgemma_urls())
 
     all_present = True
     for url, local_path in model_urls:

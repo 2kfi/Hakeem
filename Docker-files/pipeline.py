@@ -32,9 +32,11 @@ setup_logging()
 logger = logging.getLogger("Pipeline")
 
 print(f"[CONFIG] Using device: {config.stt_device} for STT")
-print(f"[CONFIG] STT model: {config.stt_model_path}")
-print(f"[CONFIG] TTS EN: {config.tts_en_model}")
-print(f"[CONFIG] TTS AR: {config.tts_ar_model}")
+print(f"[CONFIG] STT model: {config.get_final_stt_path()}")
+tts_en_paths = config.get_final_tts_en_paths()
+tts_ar_paths = config.get_final_tts_ar_paths()
+print(f"[CONFIG] TTS EN: {tts_en_paths[0]}")
+print(f"[CONFIG] TTS AR: {tts_ar_paths[0]}")
 print(f"[CONFIG] LLM API: {config.llm_api_url}")
 print(f"[CONFIG] MCP servers: {config.mcp_servers}")
 
@@ -50,16 +52,15 @@ TTS_NCHANNELS = config.tts_nchannels
 TTS_SAMPWIDTH = config.tts_sampwidth
 TTS_FRAMERATE = config.tts_framerate
 
-WHISPER_MODEL = config.stt_model_path
+WHISPER_MODEL = config.get_final_stt_path()
 WHISPER_DEVICE = config.stt_device
 WHISPER_COMPUTE_TYPE = config.stt_compute_type
 WHISPER_BEAM_SIZE = config.stt_beam_size
 WHISPER_VAD_FILTER = config.stt_vad_filter
+WHISPER_LOCAL_ONLY = config.stt_model_path is not None
 
-TTS_MODEL_EN = config.tts_en_model
-TTS_CONFIG_EN = config.tts_en_config
-TTS_MODEL_AR = config.tts_ar_model
-TTS_CONFIG_AR = config.tts_ar_config
+TTS_MODEL_EN, TTS_CONFIG_EN = config.get_final_tts_en_paths()
+TTS_MODEL_AR, TTS_CONFIG_AR = config.get_final_tts_ar_paths()
 
 LLAMA_API_URL = config.llm_api_url
 LLAMA_API_KEY = config.llm_api_key
@@ -71,7 +72,10 @@ voice_AR = None
 
 try:
     whisper_model = WhisperModel(
-        WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE_TYPE
+        WHISPER_MODEL,
+        device=WHISPER_DEVICE,
+        compute_type=WHISPER_COMPUTE_TYPE,
+        local_files_only=WHISPER_LOCAL_ONLY,
     )
     logger.info("Loaded Whisper model.")
 except Exception as e:
