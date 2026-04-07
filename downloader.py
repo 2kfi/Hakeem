@@ -1,97 +1,104 @@
 import os
+import sys
 import requests
 from tqdm import tqdm
 
-# Configuration for all your models
-MODELS_TO_DOWNLOAD = {
-    # 1. Faster Whisper Medium (Systran)
-    "WHISPER_BIN": {
-        "local_path": "models/whisper-medium/model.bin",
-        "url": "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/model.bin"
-    },
-    "WHISPER_CONFIG": {
-        "local_path": "models/whisper-medium/config.json",
-        "url": "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/config.json"
-    },
-    "WHISPER_VOCAB": {
-        "local_path": "models/whisper-medium/vocabulary.txt",
-        "url": "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/vocabulary.txt"
-    },
-    "WHISPER_TOKENIZER": {
-        "local_path": "models/whisper-medium/tokenizer.json",
-        "url": "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/tokenizer.json"
-    },
-    
-    # 2. TTS English (Cori - High Quality)
-    "TTS_EN_MODEL": {
-        "local_path": "models/TTS-CORI-EN/en_GB-cori-high.onnx",
-        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx"
-    },
-    "TTS_EN_CONFIG": {
-        "local_path": "models/TTS-CORI-EN/en_GB-cori-high.onnx.json",
-        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx.json"
-    },
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import get_config
 
-    # 3. TTS Arabic (Kareem - Medium Quality)
-    "TTS_AR_MODEL": {
-        "local_path": "models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx",
-        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx"
-    },
-    "TTS_AR_CONFIG": {
-        "local_path": "models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json",
-        "url": "https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json"
-    },
-    # 4. AI Model and Porjecter
-    "MEDGEMMA_MODEL": {
-        "local_path": "models/MedGemma/MedGemma-3b-it-Q4_K_M.gguf",
-        "url": "https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-3b-it-Q4_K_M.gguf"
-    },
-    "MEDGEMMA_PROJ": {
-        "local_path": "models/MedGemma/MedGemma-mmproj.gguf",
-        "url": "https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-mmproj.gguf"
-    }
-}
 
 def download_file(url, destination):
-    """Downloads a file and shows a progress bar."""
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    
-    # Simple timeout and stream enabled for large files
+
     response = requests.get(url, stream=True, timeout=30)
-    response.raise_for_status() # This stops the script if the link is broken
-    
-    total_size = int(response.headers.get('content-length', 0))
-    
-    with open(destination, "wb") as file, tqdm(
-        desc=f"Downloading {os.path.basename(destination)}",
-        total=total_size,
-        unit='B',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as bar:
-        for data in response.iter_content(chunk_size=16384): # larger chunk for speed
+    response.raise_for_status()
+
+    total_size = int(response.headers.get("content-length", 0))
+
+    with (
+        open(destination, "wb") as file,
+        tqdm(
+            desc=f"Downloading {os.path.basename(destination)}",
+            total=total_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar,
+    ):
+        for data in response.iter_content(chunk_size=16384):
             size = file.write(data)
             bar.update(size)
 
+
 def main():
-    print("--- Starting Model Integrity Check ---")
-    files_missing = 0
+    config = get_config()
 
-    for key, info in MODELS_TO_DOWNLOAD.items():
-        if not os.path.exists(info["local_path"]):
-            print(f"\n[MISSING] {info['local_path']}")
+    print("--- Starting Model Download ---")
+    print(f"[CONFIG] Using preset: {config.preset}")
+    print(f"[CONFIG] Download on startup: {config.models_download_on_startup}")
+    files_downloaded = 0
+    skipped_local = 0
+
+    model_urls = []
+    model_urls.extend(config.get_stt_urls())
+    model_urls.extend(config.get_tts_en_urls())
+    model_urls.extend(config.get_tts_ar_urls())
+
+    for url, local_path in model_urls:
+        if not local_path:
+            continue
+
+        if not config.models_download_on_startup:
+            if os.path.exists(local_path):
+                print(f"[OK] Found: {local_path}")
+            else:
+                print(f"[MISSING] {local_path}")
+            continue
+
+        if not os.path.exists(local_path):
+            print(f"\n[DOWNLOAD] {local_path}")
+            print(f"[URL] {url}")
             try:
-                download_file(info["url"], info["local_path"])
-                files_missing += 1
+                download_file(url, local_path)
+                files_downloaded += 1
             except Exception as e:
-                print(f"[ERROR] Could not download {key}: {e}")
+                print(f"[ERROR] Could not download: {e}")
         else:
-            print(f"[OK] Found: {info['local_path']}")
+            print(f"[OK] Found (skipping): {local_path}")
+            skipped_local += 1
 
-    if files_missing == 0:
-        print("\nAll models are present. No downloads needed.")
+    if files_downloaded == 0:
+        print(f"\nAll models present. Skipped {skipped_local} local models.")
     else:
-        print(f"\nDone! Downloaded {files_missing} file(s).")
+        print(f"\nDone! Downloaded {files_downloaded} file(s).")
+
+
+def _check_models(config):
+    print("--- Checking Model Integrity ---")
+    print(f"[CONFIG] Using preset: {config.preset}")
+
+    model_urls = []
+    model_urls.extend(config.get_stt_urls())
+    model_urls.extend(config.get_tts_en_urls())
+    model_urls.extend(config.get_tts_ar_urls())
+
+    all_present = True
+    for url, local_path in model_urls:
+        if not local_path:
+            continue
+        if not os.path.exists(local_path):
+            print(f"[MISSING] {local_path}")
+            all_present = False
+        else:
+            print(f"[OK] Found: {local_path}")
+
+    if all_present:
+        print("\nAll models are present.")
+    else:
+        print(
+            "\nSome models are missing. Enable download or provide models via volume."
+        )
+
 
 if __name__ == "__main__":
     main()

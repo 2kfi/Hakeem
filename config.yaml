@@ -1,0 +1,46 @@
+# Configuration for the pipeline
+# Works for both bare metal and Docker
+
+preset: "default"
+
+models:
+  storage_path: "./models"
+  download_on_startup: false
+
+stt:
+  model_path: "./models/whisper-medium"
+  device: "auto"
+  compute_type: "int8"
+  beam_size: 5
+  vad_filter: true
+  vad_threshold: 0.5
+  vad_min_speech_ms: 250
+  vad_min_silence_ms: 200
+
+tts:
+  en:
+    model_path: "./models/TTS-CORI-EN/en_GB-cori-high.onnx"
+    config_path: "./models/TTS-CORI-EN/en_GB-cori-high.onnx.json"
+  ar:
+    model_path: "./models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx"
+    config_path: "./models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json"
+  settings:
+    volume: 0.5
+    length_scale: 1.0
+    noise_scale: 1.0
+    noise_w_scale: 1.0
+    normalize_audio: false
+    nchannels: 1
+    sampwidth: 2
+    framerate: 24000
+
+llm:
+  api_url: "http://10.200.71.180:2312/v1"
+  api_key: "sk-no-key-required"
+  model: "local-model"
+
+mcp:
+  servers:
+    - "http://10.200.71.180:2527/sse"
+    - "http://10.200.71.180:2528/sse"
+  max_retries: 2

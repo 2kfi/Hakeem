@@ -3,8 +3,11 @@ models/TTS-CORI-EN
 models/TTS-KAREEM-ARABIC
 models/whisper-medium
 models/MedGemma
+models/Hakeem
 __pycache__
 MCP-servers/simple-calc
-Docker-files/.env
+*.pyc
+*.pyo
+.env
+logs/
 openWakeWord/
-openWakeWord

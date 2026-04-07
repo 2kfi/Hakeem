@@ -1,61 +1,63 @@
 FROM python:3.11
 
-
-# 1. STT Model (e.g., Whisper, Thunder)
+# --- BUILD ARGS ---
 ARG STT_VARIANT="medium"
-ENV STT_URL="https://huggingface.co/Systran/faster-whisper-${STT_VARIANT}/resolve/main/model.bin,\
-https://huggingface.co/Systran/faster-whisper-${STT_VARIANT}/resolve/main/config.json,\
-https://huggingface.co/Systran/faster-whisper-${STT_VARIANT}/resolve/main/vocabulary.txt,\
-https://huggingface.co/Systran/faster-whisper-${STT_VARIANT}/resolve/main/tokenizer.json"
-ENV STT_PATH="models/stt"
-
-# 2. TTS English (e.g., Cori, Piper-v2)
-ARG TTS_EN_NAME="en_GB-cori-high"
-ENV TTS_EN_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx,\
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx.json"
-ENV TTS_EN_PATH="models/tts-en"
-
-# 3. TTS Arabic (e.g., Kareem, Custom-AR)
-ARG TTS_AR_NAME="ar_JO-kareem-medium"
-ENV TTS_AR_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx,\
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ar/ar_JO/kareem/medium/ar_JO-kareem-medium.onnx.json"
-ENV TTS_AR_PATH="models/tts-ar"
-
-# 4. LLM (e.g., MedGemma, BioGPT)
 ARG LLM_VARIANT="3b-it-Q4_K_M"
-ENV LLM_URL="https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-${LLM_VARIANT}.gguf,\
-https://huggingface.co/2kfi/medgemma-4B-it-fine-tuned-gguf/resolve/main/MedGemma-mmproj.gguf"
-ENV LLM_PATH="models/llm"
 
 # --- SYSTEM CONFIG ---
-ENV LLAMA_API_URL="http://10.200.71.180:2312/v1"
-ENV LLAMA_API_KEY="sk-no-key-required"
-ENV MCP_SERVER_URLS="http://10.200.71.180:2527/sse,http://10.200.71.180:2528/sse"
-ENV STT_DEVICE="cpu"
+ENV APP_HOST=0.0.0.0
+ENV APP_PORT=8003
+ENV APP_LOG_LEVEL=INFO
+ENV STT_MODEL_PATH=/app/models/whisper-medium
+ENV STT_DEVICE=auto
+ENV STT_COMPUTE_TYPE=int8
+ENV STT_BEAM_SIZE=5
+ENV STT_VAD_FILTER=true
+ENV STT_VAD_THRESHOLD=0.5
+ENV STT_VAD_MIN_SPEECH_MS=250
+ENV STT_VAD_MIN_SILENCE_MS=200
+
+ENV TTS_EN_MODEL_PATH=/app/models/TTS-CORI-EN/en_GB-cori-high.onnx
+ENV TTS_EN_CONFIG_PATH=/app/models/TTS-CORI-EN/en_GB-cori-high.onnx.json
+ENV TTS_AR_MODEL_PATH=/app/models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx
+ENV TTS_AR_CONFIG_PATH=/app/models/TTS-KAREEM-ARABIC/ar_JO-kareem-medium.onnx.json
 ENV TTS_VOLUME=0.5
 ENV TTS_LENGTH_SCALE=1.0
 ENV TTS_NOISE_SCALE=1.0
 ENV TTS_NOISE_W_SCALE=1.0
-ENV TTS_NORMALIZE_AUDIO=False
+ENV TTS_NORMALIZE_AUDIO=false
 ENV TTS_NCHANNELS=1
 ENV TTS_SAMPWIDTH=2
 ENV TTS_FRAMERATE=24000
 
+ENV LLM_API_URL=http://host.docker.internal:2312/v1
+ENV LLM_API_KEY=sk-no-key-required
+ENV LLM_MODEL=local-model
+ENV MCP_SERVER_URLS=http://host.docker.internal:2527/sse,http://host.docker.internal:2528/sse
+ENV MCP_MAX_RETRIES=2
+
+ENV MODELS_STORAGE_PATH=/app/models
+ENV MODELS_DOWNLOAD_ON_STARTUP=false
 
 WORKDIR /app
 
-COPY Docker-files /app 
+# Copy source code
+COPY pipeline.py pipeline-streaming.py config.py downloader.py requirements.txt ./
+COPY config.yaml ./
 
-RUN mkdir -p /app/models
+# Copy TTS models
+COPY models/whisper-medium /app/models/whisper-medium
+COPY models/TTS-CORI-EN /app/models/TTS-CORI-EN
+COPY models/TTS-KAREEM-ARABIC /app/models/TTS-KAREEM-ARABIC
 
-RUN mkdir -p /app/MCP-servers
+# Copy Hakeem OWW model (wake word detection)
+COPY models/Hakeem/Hakeem.onnx /app/models/Hakeem.onnx
+COPY models/Hakeem/Hakeem.tflite /app/models/Hakeem.tflite
 
-RUN mkdir -p /app/logs
+RUN mkdir -p /app/MCP-servers /app/logs
 
-RUN python -c "import openwakeword; openwakeword.utils.download_models(); print('Check complete.')"
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -r /app/requirements.txt 
+EXPOSE 8003
 
-RUN 
-
-EXPOSE 8080
+CMD ["python", "pipeline.py"]
