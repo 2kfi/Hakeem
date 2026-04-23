@@ -1,0 +1,12 @@
+services:
+  zim-mcp:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./zimfiles:/data/zimfiles:ro
+    environment:
+      - ZIM_DATA_PATH=/data/zimfiles
+      - SERVER_PORT=5000
+      - SERVER_HOST=0.0.0.0
+    restart: unless-stopped

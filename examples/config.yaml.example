@@ -1,6 +1,5 @@
-# Docker Deployment Configuration
-# Volumes are mounted at /app in container
-# Copy to config.yaml when running with Docker
+# Full Configuration Example
+# Copy this file to config.yaml and modify as needed
 
 models:
   storage_path: "/app/models"
@@ -11,23 +10,29 @@ app:
   port: 8003
   log_level: "INFO"
 
-# STT - compatible with Docker volumes
+# Speech-to-Text (Whisper)
 stt:
   model: "Systran/faster-whisper-medium"
   device: "auto"
   compute_type: "int8"
   beam_size: 5
+  vad_filter: true
+  vad_threshold: 0.5
+  vad_min_speech_ms: 250
+  vad_min_silence_ms: 200
 
-# TTS - use local paths (volumes mounted at /app/models)
+# Text-to-Speech
+# Each language: repo (HF), voice (path), local_path (override)
 tts:
   en:
     repo: "rhasspy/piper-voices"
     voice: "en_GB/cori/high"
-    local_path: "/app/models/EN"
+    local_path: null
   ar:
     repo: "speaches-ai/piper-ar_JO-kareem-medium"
-    local_path: "/app/models/AR"
+    local_path: null
 
+# Audio output settings (applies to all TTS languages)
 settings:
   volume: 0.5
   length_scale: 1.0
@@ -38,14 +43,15 @@ settings:
   sampwidth: 2
   framerate: 24000
 
-# Point to host machine services
+# Language Model (LLM)
 llm:
-  api_url: "http://10.200.71.180:2312/v1"
+  api_url: "http://localhost:2312/v1"
   api_key: "sk-no-key-required"
   model: "local-model"
 
+# MCP Servers (for knowledge base)
 mcp:
   servers:
-    - "http://10.200.71.180:2527/sse"
-    - "http://10.200.71.180:2528/sse"
+    - "http://localhost:2527/sse"
+    - "http://localhost:2528/sse"
   max_retries: 2

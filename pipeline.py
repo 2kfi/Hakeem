@@ -2,7 +2,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import get_config, setup_logging
+from src.config import get_config, setup_logging
+from src.shared import validate_audio_format, detect_language
 
 import downloader
 
@@ -16,32 +17,24 @@ import logging
 import uuid
 import wave
 import uvicorn
-from contextlib import asynccontextmanager, AsyncExitStack
-from typing import Dict, List, Optional, Any, Tuple, Union
+from contextlib import asynccontextmanager
+from typing import Optional, Tuple
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-from openai import AsyncOpenAI
 from piper import PiperVoice
 from piper.config import SynthesisConfig
 
-try:
-    from langdetect import detect
-
-    LANGDETECT_AVAILABLE = True
-except ImportError:
-    LANGDETECT_AVAILABLE = False
+from src.mcp import MCPWrapper
 
 config = get_config()
 setup_logging()
 logger = logging.getLogger("Pipeline")
 
 print(f"[CONFIG] Using device: {config.stt_device} for STT")
-print(f"[CONFIG] STT model: {config.get_final_stt_path()}")
-tts_en_paths = config.get_final_tts_en_paths()
-tts_ar_paths = config.get_final_tts_ar_paths()
+print(f"[CONFIG] STT model: {config.get_stt_path()}")
+tts_en_paths = config.get_tts_paths("en")
+tts_ar_paths = config.get_tts_paths("ar")
 print(f"[CONFIG] TTS EN: {tts_en_paths[0]}")
 print(f"[CONFIG] TTS AR: {tts_ar_paths[0]}")
 print(f"[CONFIG] LLM API: {config.llm_api_url}")
@@ -59,7 +52,7 @@ TTS_NCHANNELS = config.tts_nchannels
 TTS_SAMPWIDTH = config.tts_sampwidth
 TTS_FRAMERATE = config.tts_framerate
 
-WHISPER_MODEL = config.get_final_stt_path()
+WHISPER_MODEL = config.get_stt_path()
 WHISPER_DEVICE = config.stt_device
 WHISPER_COMPUTE_TYPE = config.stt_compute_type
 WHISPER_BEAM_SIZE = config.stt_beam_size
@@ -69,14 +62,11 @@ WHISPER_VAD_PARAMS = {
     "min_speech_duration_ms": config.stt_vad_min_speech_ms,
     "min_silence_ms": config.stt_vad_min_silence_ms,
 }
-WHISPER_LOCAL_ONLY = config.stt_model_path is not None
+WHISPER_LOCAL_ONLY = config.get_stt_is_local()
 
-TTS_MODEL_EN, TTS_CONFIG_EN = config.get_final_tts_en_paths()
-TTS_MODEL_AR, TTS_CONFIG_AR = config.get_final_tts_ar_paths()
+TTS_MODEL_EN, TTS_CONFIG_EN = config.get_tts_paths("en")
+TTS_MODEL_AR, TTS_CONFIG_AR = config.get_tts_paths("ar")
 
-LLAMA_API_URL = config.llm_api_url
-LLAMA_API_KEY = config.llm_api_key
-LLAMA_MODEL = config.llm_model
 MCP_SERVER_URLS = config.mcp_servers
 
 whisper_model: Optional[WhisperModel] = None
@@ -110,222 +100,12 @@ except Exception:
     logger.warning("Arabic voice not available; will fallback to English voice.")
 
 
-class MCPSessionManager:
-    def __init__(self, url: str, timeout: float = 30.0):
-        self.url = url
-        self.timeout = timeout
-        self.session: Optional[ClientSession] = None
-        self.exit_stack = AsyncExitStack()
-        self.tools: List[Any] = []
-        self.lock = asyncio.Lock()
-        self.connected = False
-
-    async def connect(self):
-        async with self.lock:
-            if self.connected:
-                return
-            try:
-                logger.info(f"Connecting to MCP server: {self.url}")
-                transport_ctx = sse_client(self.url)
-                read, write = await self.exit_stack.enter_async_context(transport_ctx)
-                self.session = await self.exit_stack.enter_async_context(
-                    ClientSession(read, write)
-                )
-                await self.session.initialize()
-
-                resp = await self.session.list_tools()
-                self.tools = resp.tools
-                self.connected = True
-                logger.info(f"Connected to {self.url} - Found {len(self.tools)} tools.")
-            except Exception as e:
-                logger.error(f"Failed to connect to {self.url}: {e}")
-                await self.close()
-                raise
-
-    async def close(self):
-        self.connected = False
-        self.session = None
-        self.tools = []
-        try:
-            await self.exit_stack.aclose()
-        except Exception as e:
-            logger.error(f"Error closing session for {self.url}: {e}")
-
-    async def call_tool(self, name: str, arguments: dict) -> Any:
-        if not self.connected or not self.session:
-            await self.connect()
-        return await asyncio.wait_for(
-            self.session.call_tool(name, arguments=arguments), timeout=self.timeout
-        )
-
-
-class MCPWrapper:
-    def __init__(self, llama_base_url: str, llama_model: str, mcp_urls: list[str]):
-        self.llama = AsyncOpenAI(
-            base_url=llama_base_url,
-            api_key=LLAMA_API_KEY,
-            timeout=60.0,
-            max_retries=0,
-        )
-        self.llama_model = llama_model
-        self.mcp_managers: List[MCPSessionManager] = [
-            MCPSessionManager(url) for url in mcp_urls
-        ]
-        self.tool_map: Dict[str, MCPSessionManager] = {}
-        self._init_lock = asyncio.Lock()
-        self._initialized = False
-        self._tools_schema_cache: Optional[List[Dict]] = None
-
-    async def initialize_servers(self):
-        async with self._init_lock:
-            if self._initialized:
-                return
-
-            results = await asyncio.gather(
-                *(mgr.connect() for mgr in self.mcp_managers), return_exceptions=True
-            )
-
-            self.tool_map.clear()
-            for mgr, res in zip(self.mcp_managers, results):
-                if isinstance(res, Exception):
-                    logger.error(f"Startup connection failed for {mgr.url}: {res}")
-                    continue
-                for tool in mgr.tools:
-                    self.tool_map[tool.name] = mgr
-
-            self._initialized = True
-            self._rebuild_tools_schema_cache()
-            logger.info("MCPWrapper initialization complete.")
-
-    def _rebuild_tools_schema_cache(self):
-        schema = []
-        for mgr in self.mcp_managers:
-            if not mgr.connected:
-                continue
-            for tool in mgr.tools:
-                schema.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description or "No description",
-                            "parameters": tool.inputSchema,
-                        },
-                    }
-                )
-        self._tools_schema_cache = schema
-
-    @property
-    def openai_tools_schema(self):
-        if self._tools_schema_cache is not None:
-            return self._tools_schema_cache
-        return []
-
-    async def _execute_tool(self, tool_call) -> dict:
-        name = tool_call.function.name
-        try:
-            args_dict = json.loads(tool_call.function.arguments)
-        except Exception:
-            return {
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": name,
-                "content": "Error: Invalid JSON arguments.",
-            }
-
-        logger.info(f"AI requested tool: {name}({args_dict})")
-
-        manager = self.tool_map.get(name)
-        if not manager:
-            return {
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": name,
-                "content": f"Error: Tool '{name}' not found.",
-            }
-
-        try:
-            result = await manager.call_tool(name, args_dict)
-            content = str(result.content)
-        except Exception as e:
-            logger.warning(f"Tool call '{name}' failed: {e}. Attempting reconnect...")
-            try:
-                await manager.close()
-                await manager.connect()
-                result = await manager.call_tool(name, args_dict)
-                content = str(result.content)
-            except Exception as e2:
-                logger.error(f"Tool retry '{name}' failed: {e2}")
-                content = f"Error executing tool '{name}': {e2}"
-
-        return {
-            "role": "tool",
-            "tool_call_id": tool_call.id,
-            "name": name,
-            "content": content,
-        }
-
-    async def run_query(self, stt_input: str) -> str:
-        system_msg = {
-            "role": "system",
-            "content": "You are a concise voice assistant. Give short, natural answers. "
-            "Avoid bold text, markdown lists, or long explanations unless asked.",
-        }
-        user_msg = {"role": "user", "content": stt_input}
-
-        messages = [system_msg, user_msg]
-
-        max_tool_loops = 5
-        for i in range(max_tool_loops):
-            try:
-                tools_schema = self.openai_tools_schema
-                response = await self.llama.chat.completions.create(
-                    model=self.llama_model,
-                    messages=messages,
-                    tools=tools_schema if tools_schema else None,
-                    tool_choice="auto" if tools_schema else None,
-                )
-            except Exception as e:
-                logger.error(f"LLM call failed at step {i}: {e}")
-                raise RuntimeError(f"LLM API call failed: {e}")
-
-            message = response.choices[0].message
-
-            msg_dict: Dict[str, Any] = {
-                "role": message.role,
-                "content": message.content or "",
-            }
-            if message.tool_calls:
-                msg_dict["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message.tool_calls
-                ]
-            messages.append(msg_dict)
-
-            if not message.tool_calls:
-                return message.content or ""
-
-            tool_results = await asyncio.gather(
-                *(self._execute_tool(tc) for tc in message.tool_calls)
-            )
-            messages.extend(tool_results)
-
-        logger.warning(f"Tool loop exceeded {max_tool_loops} iterations")
-        final_msg = messages[-1]
-        return final_msg.get("content", "") if isinstance(final_msg, dict) else ""
-
-    async def close(self):
-        await asyncio.gather(*(mgr.close() for mgr in self.mcp_managers))
-
-
-mcp_wrapper = MCPWrapper(LLAMA_API_URL, LLAMA_MODEL, MCP_SERVER_URLS)
+mcp_wrapper = MCPWrapper(
+    llama_base_url=config.llm_api_url,
+    llama_model=config.llm_model,
+    mcp_urls=MCP_SERVER_URLS,
+    api_key=config.llm_api_key,
+)
 
 
 @asynccontextmanager
@@ -361,10 +141,8 @@ def stt_transcribe(audio_file) -> Tuple[str, str]:
         beam_size=WHISPER_BEAM_SIZE,
     )
     stt_output = " ".join(segment.text for segment in segments).strip()
-    logger.info(
-        f"STT Language: {getattr(info, 'language', 'unknown')} ({getattr(info, 'language_probability', 0.0):.2f})"
-    )
-    return stt_output, getattr(info, "language", "en")
+    logger.info(f"STT Language: {info.language} ({info.language_probability:.2f})")
+    return stt_output, info.language
 
 
 async def llm_process(llm_input: str) -> str:
@@ -409,25 +187,20 @@ async def tts_synthesize(text: Optional[str], lang: str) -> io.BytesIO:
         raise RuntimeError(f"TTS synthesis failed: {e}") from e
 
 
-ALLOWED_AUDIO_FORMATS = {
-    "audio/wav",
-    "audio/wave",
-    "audio/x-wav",
-    "audio/pcm",
-    "audio/ogg",
-}
 MAX_AUDIO_SIZE = 50 * 1024 * 1024
 MIN_AUDIO_SIZE = 100
 
 
-def _validate_audio_format(filename: str, content_type: str) -> bool:
-    if content_type and content_type.lower() in ALLOWED_AUDIO_FORMATS:
-        return True
-    if filename and filename.lower().endswith(
-        (".wav", ".wave", ".ogg", ".flac", ".mp3")
-    ):
-        return True
-    return False
+def _validate_audio(file: UploadFile) -> None:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    content_type = file.content_type or ""
+    if not validate_audio_format(file.filename, content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid audio format. Allowed: wav, wave, ogg, flac, mp3",
+        )
 
 
 @app.post("/process-audio")
@@ -435,15 +208,7 @@ async def process_audio(file: UploadFile = File(...)):
     request_id = uuid.uuid4().hex
     logger.info(f"Processing request {request_id}")
 
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    content_type = file.content_type or ""
-    if not _validate_audio_format(file.filename, content_type):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid audio format. Allowed: wav, wave, ogg, flac, mp3",
-        )
+    _validate_audio(file)
 
     audio_data = None
     try:
@@ -477,7 +242,7 @@ async def process_audio(file: UploadFile = File(...)):
     if not tts_text or not tts_text.strip():
         raise HTTPException(status_code=502, detail="LLM returned empty response")
 
-    response_lang = _detect_language(tts_text)
+    response_lang = detect_language(tts_text)
     logger.info(f"[{request_id}] Detected response language: {response_lang}")
 
     try:
@@ -490,20 +255,6 @@ async def process_audio(file: UploadFile = File(...)):
 
     audio_buffer.seek(0)
     return StreamingResponse(audio_buffer, media_type="audio/wav")
-
-
-def _detect_language(text: str) -> str:
-    if not text or not text.strip():
-        return "en"
-
-    if not LANGDETECT_AVAILABLE:
-        return "en"
-
-    try:
-        detected = detect(text[:200])
-        return detected if detected else "en"
-    except Exception:
-        return "en"
 
 
 if __name__ == "__main__":

@@ -34,15 +34,15 @@ def main():
     config = get_config()
 
     print("--- Starting Model Download ---")
-    print(f"[CONFIG] Using preset: {config.preset}")
     print(f"[CONFIG] Download on startup: {config.models_download_on_startup}")
+    print(f"[CONFIG] Storage path: {config.models_storage_path}")
     files_downloaded = 0
     skipped_local = 0
 
     model_urls = []
     model_urls.extend(config.get_stt_urls())
-    model_urls.extend(config.get_tts_en_urls())
-    model_urls.extend(config.get_tts_ar_urls())
+    model_urls.extend(config.get_tts_urls("en"))
+    model_urls.extend(config.get_tts_urls("ar"))
 
     for url, local_path in model_urls:
         if not local_path:
@@ -71,33 +71,6 @@ def main():
         print(f"\nAll models present. Skipped {skipped_local} local models.")
     else:
         print(f"\nDone! Downloaded {files_downloaded} file(s).")
-
-
-def _check_models(config):
-    print("--- Checking Model Integrity ---")
-    print(f"[CONFIG] Using preset: {config.preset}")
-
-    model_urls = []
-    model_urls.extend(config.get_stt_urls())
-    model_urls.extend(config.get_tts_en_urls())
-    model_urls.extend(config.get_tts_ar_urls())
-
-    all_present = True
-    for url, local_path in model_urls:
-        if not local_path:
-            continue
-        if not os.path.exists(local_path):
-            print(f"[MISSING] {local_path}")
-            all_present = False
-        else:
-            print(f"[OK] Found: {local_path}")
-
-    if all_present:
-        print("\nAll models are present.")
-    else:
-        print(
-            "\nSome models are missing. Enable download or provide models via volume."
-        )
 
 
 if __name__ == "__main__":

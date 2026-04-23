@@ -1,6 +1,21 @@
-# LLMSIMT Voice Pipeline
+# LLMSIMT Voice Pipeline (Hakeem)
 
-A Docker-ready voice processing pipeline with STT (Speech-to-Text), LLM (Language Model), and TTS (Text-to-Speech) capabilities.
+> **AIOL** - A Docker-ready voice processing pipeline with STT, LLM, and TTS capabilities for medical AI assistance.
+
+## Documentation
+
+| Guide | Audience | Description |
+|-------|----------|-------------|
+| **[User Guide](docs/USER.md)** | End Users | Features, usage, hardware requirements, disclaimers |
+| **[Developer Guide](docs/DEVELOPER.md)** | Developers | API, architecture, config, MCP tools, wake word |
+| **[Judges Report](docs/JUDGES.md)** | Judges | Technical report for JOYS T323 competition |
+
+### Quick Links
+- [Configuration](docs/CONFIG.md)
+- [API Reference](docs/API.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+---
 
 ## Architecture
 

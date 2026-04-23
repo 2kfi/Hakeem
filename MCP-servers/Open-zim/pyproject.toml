@@ -1,0 +1,27 @@
+[project]
+name = "zim-mcp"
+version = "1.0.0"
+description = "MCP server for reading and searching ZIM files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
+authors = [{name = "ZIM MCP User"}]
+dependencies = [
+    "libzim>=3.9.0",
+    "fastmcp>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "uvicorn>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

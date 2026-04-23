@@ -1,0 +1,137 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.root{padding:1.5rem 1rem;max-width:720px}
+h1{font-size:22px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
+.sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.5rem}
+.section{margin-bottom:1.5rem}
+.sec-title{font-size:13px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.875rem 1rem}
+.card .num{font-size:22px;font-weight:500;color:var(--color-text-primary)}
+.card .lbl{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.progress-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.prog-label{font-size:13px;color:var(--color-text-primary);width:155px;flex-shrink:0}
+.prog-bar-wrap{flex:1;background:var(--color-background-secondary);border-radius:20px;height:8px;overflow:hidden}
+.prog-bar{height:8px;border-radius:20px;transition:width .3s}
+.prog-val{font-size:12px;font-weight:500;color:var(--color-text-secondary);min-width:34px;text-align:right}
+.highlight{background:var(--color-background-info);border-left:3px solid #378ADD;border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;padding:.75rem 1rem;font-size:14px;color:var(--color-text-primary);line-height:1.6;margin-bottom:1rem}
+.roadmap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.rm-col{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.875rem 1rem}
+.rm-col .title{font-size:12px;font-weight:500;margin-bottom:.6rem;display:flex;align-items:center;gap:5px}
+.rm-col li{font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;padding-right:4px}
+.done .title{color:#1D9E75}
+.inprog .title{color:#BA7517}
+.planned .title{color:#378ADD}
+.qa-item{border-bottom:.5px solid var(--color-border-tertiary);padding:.75rem 0}
+.qa-item:last-child{border-bottom:none}
+.qa-q{font-size:13px;font-weight:500;color:var(--color-text-primary);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.qa-a{font-size:13px;color:var(--color-text-secondary);margin-top:.5rem;line-height:1.6;display:none}
+.qa-a.open{display:block}
+.arrow{font-size:11px;transition:transform .2s;color:var(--color-text-secondary)}
+.arrow.open{transform:rotate(90deg)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.tag-done{background:#E1F5EE;color:#0F6E56}
+.tag-prog{background:#FAEEDA;color:#854F0B}
+.tag-plan{background:#E6F1FB;color:#185FA5}
+</style>
+<div class="root">
+<h1>حكيم · Hakeem AI</h1>
+<p class="sub">T323 · علماء الغد 2026 · إعداد اجتماع المرشدة</p>
+
+<div class="section">
+<p class="sec-title">أرقام المشروع</p>
+<div class="cards">
+  <div class="card"><div class="num">53%</div><div class="lbl">دقة Hakeem v2 على MedQA</div></div>
+  <div class="card"><div class="num">1.96s</div><div class="lbl">متوسط وقت الجواب</div></div>
+  <div class="card"><div class="num">6</div><div class="lbl">datasets تدريب طبية</div></div>
+  <div class="card"><div class="num">4B</div><div class="lbl">حجم النموذج (يعمل offline)</div></div>
+</div>
+</div>
+
+<div class="section">
+<p class="sec-title">مقارنة النماذج</p>
+<div id="bars"></div>
+</div>
+
+<div class="section">
+<p class="sec-title">الـ Roadmap</p>
+<div class="roadmap">
+  <div class="rm-col done">
+    <div class="title"><span class="tag tag-done">✓ مكتمل</span></div>
+    <ul>
+      <li>FastAPI backend</li>
+      <li>MedGemma inference</li>
+      <li>Arabic STT/TTS</li>
+      <li>Fine-tuning v1 + v2</li>
+      <li>Benchmark pipeline</li>
+      <li>WireGuard VPN</li>
+    </ul>
+  </div>
+  <div class="rm-col inprog">
+    <div class="title"><span class="tag tag-prog">⟳ قيد التطوير</span></div>
+    <ul>
+      <li>Web UI (Arabic RTL)</li>
+      <li>Liver MCP Tool</li>
+      <li>GitHub cleanup</li>
+    </ul>
+  </div>
+  <div class="rm-col planned">
+    <div class="title"><span class="tag tag-plan">◎ مخطط</span></div>
+    <ul>
+      <li>Raspberry Pi deploy</li>
+      <li>Docker packaging</li>
+      <li>Enterprise edition</li>
+      <li>PostgreSQL migration</li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<div class="section">
+<p class="sec-title">أسئلة متوقعة — اضغط للجواب</p>
+<div id="qa"></div>
+</div>
+</div>
+
+<script>
+const models=[
+  {name:"Hakeem v2 ✓",acc:53,highlight:true},
+  {name:"MedGemma (base)",acc:50},
+  {name:"MedGemma-FT v1",acc:49},
+  {name:"Gemma3-4B",acc:48},
+  {name:"Qwen3-4B",acc:25}
+];
+const barsEl=document.getElementById('bars');
+models.forEach(m=>{
+  const row=document.createElement('div');
+  row.className='progress-row';
+  const color=m.highlight?'#1D9E75':'#378ADD';
+  row.innerHTML=`<span class="prog-label" style="font-weight:${m.highlight?'500':'400'}">${m.name}</span><div class="prog-bar-wrap"><div class="prog-bar" style="width:${m.acc}%;background:${color}"></div></div><span class="prog-val">${m.acc}%</span>`;
+  barsEl.appendChild(row);
+});
+
+const qas=[
+  {q:'53% دقة — هاد كافي طبياً؟',a:'للنموذج بحجم 4B هاد ممتاز جداً. هدفنا دعم الطبيب مش استبداله. الدقة بتتحسن مع كل جولة ضبط، وعندنا خطط لتوسيع قاعدة البيانات.'},
+  {q:'ليش offline؟ مش أسهل cloud؟',a:'المناطق الريفية والأزمات ما في فيها إنترنت ثابت. كمان بيانات المرضى حساسة — تبقى عند المريض ما تروح لسيرفرات خارجية.'},
+  {q:'شو الفرق عن ChatGPT؟',a:'ChatGPT يحتاج إنترنت، ما عنده تخصص طبي عميق، وبياناتك بتروح لـ OpenAI. حكيم: offline كامل، متخصص بالطب، بياناتك عندك.'},
+  {q:'كيف تضمنوا الأمان؟',a:'WireGuard VPN بين السيرفرات، API authentication، وقاعدة البيانات معزولة عن الإنترنت تماماً.'},
+  {q:'شو القادم إذا دعمتم المشروع؟',a:'نشر على Raspberry Pi + Enterprise edition للمستشفيات + دراسة ميدانية في مجتمعات ريفية أردنية.'}
+];
+const qaEl=document.getElementById('qa');
+qas.forEach((item,i)=>{
+  const div=document.createElement('div');
+  div.className='qa-item';
+  div.innerHTML=`<div class="qa-q" onclick="toggle(${i})"><span>${item.q}</span><span class="arrow" id="arr${i}">▶</span></div><div class="qa-a" id="ans${i}">${item.a}</div>`;
+  qaEl.appendChild(div);
+});
+function toggle(i){
+  const ans=document.getElementById('ans'+i);
+  const arr=document.getElementById('arr'+i);
+  const open=ans.classList.contains('open');
+  document.querySelectorAll('.qa-a').forEach(el=>el.classList.remove('open'));
+  document.querySelectorAll('.arrow').forEach(el=>el.classList.remove('open'));
+  if(!open){ans.classList.add('open');arr.classList.add('open');}
+}
+</script>
