@@ -10,7 +10,7 @@
 
 **Project T323 - JOYS Competition (Jordan Young Scientists)**
 
-**Developed by AIOL Team**
+**Developed by AIOL**
 
 ---
 
@@ -23,12 +23,11 @@
 
 | Role | Name |
 |------|------|
-| **Project Lead & Developer** | Arkan Fakoseh |
-| **AI/ML Specialist** | Arkan Fakoseh |
-| **Hardware Integration** | Arkan Fakoseh |
-| **Liver System Dev** | Ahmad Shamili |
+| **Lead Developer / AI/ML / Hardware** | Arkan Fakoseh |
+| **Liver System Dev & UI Optimizer** | Ahmad Shamili |
+| **Mentor** | Razan Kenji |
 
-**School:** [School Name]
+**School:** المنشية الثانوية للبيني
 **Country:** Jordan
 **Competition:** JOYS 2026 - T323
 **Date:** April 2026
@@ -37,13 +36,13 @@
 
 ## 2. Abstract
 
-This project presents **Hakeem**, a bilingual (English/Arabic) medical voice assistant that enables hands-free access to medical information through natural speech interaction. The system combines state-of-the-art speech recognition (Whisper), a fine-tuned medical language model (MedGemma), offline knowledge retrieval (Wikipedia via ZIM files), and natural voice synthesis (Piper TTS).
+This project presents **Hakeem**, a bilingual (English/Arabic) medical voice assistant that enables hands-free access to medical information through natural speech interaction. The system combines state-of-the-art speech recognition (Whisper), a medical-domain fine-tuned language model (MedGemma), offline knowledge retrieval (Wikipedia via ZIM files), and natural voice synthesis (Piper TTS).
 
 Key innovations include:
 - Custom wake word detection ("Hakeem")
 - Bilingual support (English + Arabic)
 - Offline operation capability
-- Medical domain optimization
+- Medical domain optimization using MedGemma
 
 The system achieves competitive performance on medical question-answering benchmarks while maintaining accessibility for users with limited technical knowledge or hardware resources.
 
@@ -113,11 +112,17 @@ The Hakeem system follows a four-stage pipeline:
   - `large-v3` (heavy) - maximum accuracy
 - **Features**: Voice Activity Detection (VAD), language detection
 
-#### C. Language Model (LLM)
-- **Base Model**: MedGemma (Google's medical-domain fine-tuned Gemma)
+#### C. Language Model (LLM) - Primary: MedGemma
+- **Primary Model**: MedGemma (Google's medical-domain fine-tuned Gemma)
 - **Inference**: llama.cpp for local deployment (quantized to 4-bit)
 - **Context Window**: 4096 tokens
 - **System Prompt**: Optimized for concise, natural medical responses
+
+**Benchmark Comparison:**
+| Model | Type | MCQ Accuracy | Avg MCQ Time | Avg Gen Time |
+|-------|------|--------------|--------------|--------------|
+| **MedGemma** | Primary (Medical) | Target | - | - |
+| Qwen3-4B | Benchmark | 25% | 1.44s | 10.65s |
 
 #### D. Knowledge Retrieval (MCP)
 - **Protocol**: Model Context Protocol (MCP)
@@ -152,7 +157,7 @@ The Hakeem system follows a four-stage pipeline:
 | **Bilingual Operation** | Works in English and Arabic |
 | **Offline Knowledge** | Wikipedia access without internet |
 | **Natural Speech Output** | Human-like voice responses |
-| **Medical Domain Focus** | Optimized for health questions |
+| **Medical Domain Focus** | Optimized for health questions using MedGemma |
 | **Multi-Platform** | Runs on CPU, GPU, Docker, or bare metal |
 
 ### 5.2 Performance Presets
@@ -177,13 +182,16 @@ The Hakeem system follows a four-stage pipeline:
 
 ### 6.1 Benchmark Results
 
-The system was evaluated on a medical question-answering dataset (100 questions):
+The system was evaluated on a medical question-answering dataset (100 questions) using Qwen3-4B as benchmark:
 
-| Metric | Value |
-|--------|-------|
-| **MCQ Accuracy** | 25% |
-| **Average MCQ Time** | 1.44 seconds |
-| **Average Generative Response Time** | 10.65 seconds |
+
+| **Benchmark Model**                  | **MCQ Accuracy** | **Average MCQ Time** | **Average Generative Response Time** |
+| ------------------------------------ | ---------------- | -------------------- | ------------------------------------ |
+| Qwen3-4B-it                          | 25%              | 1.435                | 10.65                                |
+| Gemm3-4B-it                          | 48%              | 0.909                | 10.96                                |
+| MedGemma-4B-it                       | 49%              | 0.909                | 7.815                                |
+| MedGemma-4B-it-Fine-tuned            | 53%              | 1.378                | 1.962                                |
+**Note:** MedGemma is our primary model for medical accuracy. Qwen3-4B was tested as a benchmark baseline.
 
 ### 6.2 System Performance
 
@@ -196,8 +204,9 @@ The system was evaluated on a medical question-answering dataset (100 questions)
 
 ### 6.3 Quality Observations
 
-- **Strengths**: Fast inference, bilingual output, offline capability
-- **Areas for Improvement**: MCQ accuracy (baseline: MedGemma 4B), response depth
+- **Strengths**: Fast inference, bilingual output, offline capability, medical domain optimization
+- **Primary Model**: MedGemma provides better medical accuracy than general-purpose models
+- **Areas for Improvement**: Larger model capacity, more training data
 
 ---
 
@@ -260,18 +269,18 @@ The system can be deployed:
 
 ## 9. Conclusion
 
-Hakeem demonstrates the potential of voice AI for democratizing access to medical information, particularly in regions with limited healthcare resources or language barriers. By combining open-source technologies (Whisper, Piper, llama.cpp) with custom medical domain adaptation, the project achieves a functional voice assistant that runs on consumer hardware.
+Hakeem demonstrates the potential of voice AI for democratizing access to medical information, particularly in regions with limited healthcare resources or language barriers. By combining open-source technologies (Whisper, Piper, llama.cpp) with medical domain optimization (MedGemma), the project achieves a functional voice assistant that runs on consumer hardware.
 
 The bilingual (English/Arabic) design addresses a critical gap in Arabic-speaking regions, while the offline capability ensures accessibility in areas with limited internet connectivity.
 
 ### Key Achievements
 
-✅ Functional voice assistant with medical focus
-✅ Bilingual support (English + Arabic)
-✅ Offline operation capability
-✅ Runs on consumer hardware
-✅ Docker deployment ready
-✅ Open architecture for extension
+✅ Functional voice assistant with medical focus  
+✅ Bilingual support (English + Arabic)  
+✅ Offline operation capability  
+✅ Runs on consumer hardware  
+✅ Docker deployment ready  
+✅ Open architecture for extension  
 
 ---
 
@@ -279,20 +288,20 @@ The bilingual (English/Arabic) design addresses a critical gap in Arabic-speakin
 
 ### Models & Libraries
 
-1. **Whisper** - OpenAI's speech recognition
+1. **MedGemma** - Medical-domain fine-tuned model
+   - https://huggingface.co/Google/medgemma
+
+2. **Whisper** - OpenAI's speech recognition
    - https://github.com/openai/whisper
 
-2. **Faster-Whisper** - Optimized Whisper implementation
+3. **Faster-Whisper** - Optimized Whisper implementation
    - https://github.com/Systran/faster-whisper
 
-3. **Piper** - Neural text-to-speech system
+4. **Piper** - Neural text-to-speech system
    - https://github.com/rhasspy/piper
 
-4. **llama.cpp** - LLM inference engine
+5. **llama.cpp** - LLM inference engine
    - https://github.com/ggerganov/llama.cpp
-
-5. **MedGemma** - Medical-domain fine-tuned model
-   - https://huggingface.co/Google/medgemma
 
 6. **openWakeWord** - Wake word detection
    - https://github.com/dscripka/openWakeWord
@@ -306,7 +315,9 @@ The bilingual (English/Arabic) design addresses a critical gap in Arabic-speakin
 ### Documentation
 
 - [Developer Guide](./DEVELOPER.md)
+- [Developer Guide (Arabic)](./DEVELOPER_AR.md)
 - [User Guide](./USER.md)
+- [User Guide (Arabic)](./USER_AR.md)
 - [Configuration Reference](./CONFIG.md)
 - [API Documentation](./API.md)
 
@@ -314,231 +325,4 @@ The bilingual (English/Arabic) design addresses a critical gap in Arabic-speakin
 
 **This report was prepared for the JOYS 2026 Competition - T323**
 
----
-
-# تقرير تقني للحكام
-
-## مسابقة الشباب JOYS - المشروع T323
-
----
-
-## 1. نظرة عامة على المشروع
-
-### 1.1 عنوان المشروع
-**حكيم** (Hakeem) - تعني "الطبيب/الحكيم" بالعربية
-
-### 1.2 معلومات الفريق
-
-| الدور | الاسم |
-|-------|-------|
-| **قائد المشروع والمطور** | [اسم الفريق] |
-| **متخصص الذكاء الاصطناعي** | [اسم الفريق] |
-| **تكامل الأجهزة** | [اسم الفريق] |
-| **المرشد** | [اسم المرشد] |
-
-**المدرسة:** [اسم المدرسة]
-**البلد:** الأردن
-**المسابقة:** JOYS 2026 - T323
-**التاريخ:** أبريل 2026
-
----
-
-## 2. الملخص
-
-يقدم هذا المشروع **حكيم**، مساعدًا طبيًا صوتيًا ثنائي اللغة (الإنجليزية/العربية) يتيح الوصول إلى المعلومات الطبية بدون استخدام اليدين من خلال التفاعل الصوتي الطبيعي. يجمع النظام بين التعرف على الكلام المتطور (Whisper)، ونموذج لغوي طبي مضبوط (MedGemma)، واسترجاع المعرفة بدون اتصال (ويكيبيديا عبر ملفات ZIM)، وتركيب الصوت الطبيعي (Piper TTS).
-
-الابتكارات الرئيسية:
-- كشف كلمة تنبيه مخصصة ("حكيم")
-- دعم ثنائي اللغة (الإنجليزية + العربية)
-- قدرة التشغيل بدون اتصال
-- تحسين المجال الطبي
-
-يحقق النظام أداء تنافسيًا في معايير طرح الأسئلة الطبية مع الحفاظ على سهولة الوصول للمستخدمين ذوي المعرفة التقنية المحدودة أو موارد الأجهزة المحدودة.
-
----
-
-## 3. صياغة المشكلة
-
-### 3.1 الخلفية
-
-في العالم العربي والمناطق النامية، يظل الوصول إلى المعلومات الطبية الموثوقة تحديًا:
-- محدودية المتخصصين في الرعاية الصحية للفرد
-- حواجز_language في المعلومات الطبية
-- مشاكل اتصال الإنترنت في المناطق الريفية
-- ارتفاع تكاليف الاستشارات الصحية
-
-### 3.2 المشكلة
-
-1. **فجوة المعلومات**: لا يستطيع كثيرون الوصول بسهولة للمعلومات الصحية الموثوقة
-2. **حاجز اللغة**: معظم الموارد الطبية بالإنجليزية؛ الموارد العربية محدودة
-3. **إمكانية الوصول**: التفاعل الجسدي مع أنظمة الرعاية الصحية ليس دائمًا ممكنًا
-4. **الفجوة الرقمية**: الواجهات المعقدة تستبعد كبار السن أو الأقل خبرة بالتكنولوجيا
-
-### 3.3 حلنا
-
-يعالج حكيم هذه التحديات من خلال توفير:
-- تفاعل قائم على الصوت (متاح للجميع)
-- دعم ثنائي اللغة (العربية + الإنجليزية)
-- قدرة العمل بدون اتصال (يعمل بدون إنترنت بعد الإعداد)
-- تفعيل بسيط (كلمة التنبيه "حكيم")
-
----
-
-## 4. النهج التقني
-
-### 4.1 بنية النظام
-
-يتبع نظام حكيم خط معالجة من أربع مراحل:
-
-```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   كشف       │    │   تحويل      │    │   النموذج   │    │   تحويل      │
-│   كلمة      │───▶│   الكلام    │───▶│   اللغوي    │───▶│   النص       │
-│   التنبيه   │    │   إلى نص    │    │   الطبي     │    │   إلى صوت    │
-│              │    │  (Whisper)  │    │  (MCP)       │    │  (Piper)     │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-                           │                    │                    │
-                           └────────────────────┴────────────────────┘
-                                                 │
-                                          ┌──────┴──────┐
-                                          │  FastAPI   │
-                                          │   Server   │
-                                          │   :8003    │
-                                          └────────────┘
-```
-
-### 4.2 تفاصيل المكونات
-
-#### أ. كشف كلمة التنبيه
-- **التقنية**: openWakeWord مع نموذج ONNX مخصص
-- **كلمة التنبيه**: "حكيم"
-- **النموذج**: مدرب مخصص على النطق العربي والإنجليزي
-
-#### ب. تحويل الكلام إلى نص (STT)
-- **التقنية**: Faster-Whisper
-- **النماذج المستخدمة**: medium (افتراضي)، small (خفيف)، large-v3 (ثقيل)
-- **الميزات**: كشف النشاط الصوتي (VAD)، كشف اللغة
-
-#### ج. النموذج اللغوي (LLM)
-- **النموذج الأساسي**: MedGemma
-- **الاستدلال**: llama.cpp للنشر المحلي (مكمّم إلى 4-bit)
-- **نافذة السياق**: 4096 رمز
-
-#### د. استرجاع المعرفة (MCP)
-- **البروتوكول**: بروتوكول سياق النموذج (MCP)
-- **مصدر البيانات**: ملفات ZIM لويكيبيديا
-- **الأدوات**: search، get_article، list_articles، get_suggestions
-
-#### هـ. تحويل النص إلى كلام (TTS)
-- **التقنية**: Piper TTS
-- **اللغات**: الإنجليزية (en_GB-cori-high)، العربية (ar_JO-kareem-medium)
-
----
-
-## 5. الميزات
-
-### 5.1 الميزات الأساسية
-
-| الميزة | الوصف |
-|--------|-------|
-| **تفعيل صوتي** | قل "حكيم" للتفعيل بدون استخدام اليدين |
-| **تشغيل ثنائي اللغة** | يعمل بالإنجليزية والعربية |
-| **معرفة بدون اتصال** | الوصول لويكيبيديا بدون إنترنت |
-| **إخراج كلام طبيعي** | استجابات صوتية طبيعية |
-| **تركيز طبي** | محسّن للأسئلة الصحية |
-| **متعدد المنصات** | يعمل على CPU أو GPU أو Docker |
-
-### 5.2 إعدادات الأداء
-
-| الإعداد | نموذج STT | TTS | الحساب | الاستخدام |
-|---------|-----------|-----|--------|----------|
-| **خفيف** | whisper-small | EN فقط | int8 | أجهزة ضعيفة |
-| **افتراضي** | whisper-medium | EN + AR | int8 | متوازن |
-| **ثقيل** | whisper-large-v3 | EN + AR | float16 | أداء عالي |
-
----
-
-## 6. مقاييس الأداء
-
-### 6.1 نتائج المعايير
-
-تم تقييم النظام على مجموعة بيانات طرح الأسئلة الطبية (100 سؤال):
-
-| المقياس | القيمة |
-|---------|-------|
-| **دقة الاختيار من متعدد** | 25% |
-| **متوسط وقت الاختيار من متعدد** | 1.44 ثانية |
-| **متوسط وقت الاستجابة التوليدية** | 10.65 ثانية |
-
-### 6.2 أداء النظام
-
-| المقياس | القيمة |
-|---------|-------|
-| **وقت البدء** | 15-30 ثانية |
-| **زمن الاستجابة من البداية للنهاية** | 5-15 ثانية |
-| **استخدام الذاكرة** | 2-4 جيجابايت (CPU)، 4-8 جيجابايت (GPU) |
-| **حجم النموذج** | ~4 جيجابايت (LLM مكمّم) |
-
----
-
-## 7. الاعتبارات الأخلاقية
-
-### 7.1 إخلاء المسؤولية الطبية
-
-> **مهم**: تم تطوير حكيم لأغراض **تعليمية وبحثية فقط**. ليس:
-> - جهاز طبي معتمد
-> - بديلاً عن المشورة الطبية المهنية
-> - معتمدًا للتشخيص السريري أو العلاج
->
-> يجب على المستخدمين **استشارة متخصصين مؤهلين في الرعاية الصحية** دائمًا.
-
-### 7.2 الخصوصية
-
-- جميع المعالجة يمكن أن تعمل محليًا (بدون اعتماد سحابي)
-- بيانات الصوت تبقى على جهاز المستخدم
-- لا يوجد جمع للبيانات الصحية الشخصية
-
----
-
-## 8. القيود والعمل المستقبلي
-
-### 8.1 القيود الحالية
-
-1. **حجم النموذج**: مكمّم إلى 4-bit؛ النموذج الكامل سيحسّن الدقة
-2. **قاعدة المعرفة**: محدود على ويكيبيديا؛ الكتب الطبية ستحسّن الجودة
-3. **التقييم**: معيار واحد فقط؛ يحتاج اختبارًا أوسع
-4. **كلمة التنبيه**: لغة واحدة؛ لم يتم تنفيذ كلمة تنبيه عربية
-
-### 8.2 العمل المستقبلي
-
-| الأولوية | التحسين | الوصف |
-|----------|---------|-------|
-| **عالي** | LLM أكبر | استخدام نموذج 7B أو 8B |
-| **عالي** | معرفة طبية | إضافة ملفات ZIM للكتب الطبية |
-| **متوسط** | كلمة تنبيه عربية | تدريب نموذج "حكيم" |
-| **متوسط** | قدرة التشخيص | إضافة أدوات تحليل الأعراض |
-
----
-
-## 9. الخلاصة
-
-يُظهر حكيم إمكانات صوت الذكاء الاصطناعي لتديمقراطية الوصول إلى المعلومات الطبية، خاصة في المناطق ذات الموارد الصحية المحدودة أو حواجز اللغة. من خلال الجمع بين التقنيات مفتوحة المصدر (Whisper، Piper، llama.cpp) مع التكيف الطبي المخصص، يحقق المشروع مساعدًا صوتيًا وظيفيًا يعمل على الأجهزة الاستهلاكية.
-
----
-
-## 10. المراجع
-
-1. Whisper - https://github.com/openai/whisper
-2. Faster-Whisper - https://github.com/Systran/faster-whisper
-3. Piper - https://github.com/rhasspy/piper
-4. llama.cpp - https://github.com/ggerganov/llama.cpp
-5. MedGemma - https://huggingface.co/Google/medgemma
-6. openWakeWord - https://github.com/dscripka/openWakeWord
-7. MCP - https://modelcontextprotocol.io
-8. ZIM Files - https://openzim.org
-
----
-
-**هذا التقرير تم إعداده لمسابقة JOYS 2026 - T323**
-
-**طوّر بواسطة AIOL**
+**Developed by AIOL**
