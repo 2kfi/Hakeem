@@ -1,11 +1,15 @@
-import downloader
+import os
+import sys
 
-downloader.main()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from src.config import get_config, setup_logging
+from src.shared import validate_audio_format, detect_language
+
+import downloader
 
 import asyncio
 import io
 import logging
-import os
 import uuid
 import wave
 import uvicorn
@@ -17,9 +21,7 @@ from faster_whisper import WhisperModel
 from piper import PiperVoice
 from piper.config import SynthesisConfig
 
-from src.config import get_config, setup_logging
 from src.mcp import MCPWrapper
-from src.shared import validate_audio_format, detect_language
 
 config = get_config()
 setup_logging()
@@ -30,14 +32,37 @@ device = (
     if has_cuda
     else ("auto" if config.stt_device == "auto" else config.stt_device)
 )
+
+models_info = {}
+
+stt_resolved, stt_exists = config.get_stt_path()
+models_info["stt"] = {"path": stt_resolved, "local": stt_exists}
+
+tts_en_paths = config.get_tts_paths("en")
+tts_ar_paths = config.get_tts_paths("ar")
+models_info["tts_en"] = {
+    "path": tts_en_paths[0],
+    "local": config._path_exists(tts_en_paths[0]),
+}
+models_info["tts_ar"] = {
+    "path": tts_ar_paths[0],
+    "local": config._path_exists(tts_ar_paths[0]),
+}
+
+print(
+    f"[CONFIG] STT model: {stt_resolved} {'(local)' if stt_exists else '(will download)'}"
+)
+print(
+    f"[CONFIG] TTS EN: {tts_en_paths[0] or 'not configured'} {'(local)' if models_info['tts_en']['local'] else '(will download)'}"
+)
+print(
+    f"[CONFIG] TTS AR: {tts_ar_paths[0] or 'not configured'} {'(local)' if models_info['tts_ar']['local'] else '(will download)'}"
+)
 print(f"[CONFIG] Will use {device} for faster-whisper")
 
-WHISPER_MODEL = config.get_stt_path()
-WHISPER_DEVICE = device
-WHISPER_COMPUTE_TYPE = config.stt_compute_type
-
-TTS_MODEL_EN, TTS_CONFIG_EN = config.get_tts_paths("en")
-TTS_MODEL_AR, TTS_CONFIG_AR = config.get_tts_paths("ar")
+if config.models_download_on_startup:
+    print("\n[CONFIG] download_on_startup=True — checking for missing models...")
+    downloader.main()
 
 SYN_config = SynthesisConfig(
     volume=config.tts_volume,
@@ -51,31 +76,72 @@ TTS_NCHANNELS = config.tts_nchannels
 TTS_SAMPWIDTH = config.tts_sampwidth
 TTS_FRAMERATE = config.tts_framerate
 
+WHISPER_DEVICE = device
+WHISPER_COMPUTE_TYPE = config.stt_compute_type
+WHISPER_BEAM_SIZE = config.stt_beam_size
+WHISPER_VAD_FILTER = config.stt_vad_filter
+WHISPER_VAD_PARAMS = {
+    "threshold": config.stt_vad_threshold,
+    "min_speech_duration_ms": config.stt_vad_min_speech_duration_ms,
+    "min_silence_duration_ms": config.stt_vad_min_silence_duration_ms,
+}
+
 logger = logging.getLogger("Pipeline")
 
-try:
-    model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type="int8")
-    logger.info("Loaded Whisper model.")
-except Exception as e:
-    logger.error(f"Failed to load Whisper model: {e}")
-    raise
+whisper_model: Optional[WhisperModel] = None
+voice_EN: Optional[PiperVoice] = None
+voice_AR: Optional[PiperVoice] = None
 
-voice_EN = None
-voice_AR = None
 
-try:
-    voice_EN = PiperVoice.load(TTS_MODEL_EN, config_path=TTS_CONFIG_EN)
-    logger.info("Loaded English voice.")
-except Exception as e:
-    logger.error(f"Failed to load English voice: {e}")
-    raise
+def _load_whisper() -> WhisperModel:
+    global whisper_model
+    if whisper_model is not None:
+        return whisper_model
 
-try:
-    voice_AR = PiperVoice.load(TTS_MODEL_AR, config_path=TTS_CONFIG_AR)
-    logger.info("Loaded Arabic voice.")
-except Exception:
-    voice_AR = None
-    logger.warning("Arabic voice not available; will fallback to English voice.")
+    path, exists = config.get_stt_path()
+    logger.info(f"Loading Whisper model from: {path}")
+    model = WhisperModel(
+        path,
+        device=WHISPER_DEVICE,
+        compute_type=WHISPER_COMPUTE_TYPE,
+        local_files_only=exists,
+    )
+    whisper_model = model
+    logger.info(f"Loaded Whisper model: {path}")
+    return model
+
+
+def _load_voice(
+    model_path: str, config_path: Optional[str], lang: str
+) -> Optional[PiperVoice]:
+    logger.info(f"Loading {lang} voice from: {model_path}")
+    try:
+        voice = PiperVoice.load(model_path, config_path=config_path)
+        logger.info(f"Loaded {lang} voice: {model_path}")
+        return voice
+    except Exception as e:
+        logger.error(f"Failed to load {lang} voice: {e}")
+        return None
+
+
+def _get_voice_EN() -> Optional[PiperVoice]:
+    global voice_EN
+    if voice_EN is not None:
+        return voice_EN
+    model_path, config_path = config.get_tts_paths("en")
+    if model_path and config_path:
+        voice_EN = _load_voice(model_path, config_path, "English")
+    return voice_EN
+
+
+def _get_voice_AR() -> Optional[PiperVoice]:
+    global voice_AR
+    if voice_AR is not None:
+        return voice_AR
+    model_path, config_path = config.get_tts_paths("ar")
+    if model_path and config_path:
+        voice_AR = _load_voice(model_path, config_path, "Arabic")
+    return voice_AR
 
 
 mcp_wrapper = MCPWrapper(
@@ -83,11 +149,35 @@ mcp_wrapper = MCPWrapper(
     llama_model=config.llm_model,
     mcp_urls=config.mcp_servers,
     api_key=config.llm_api_key,
+    timeout=config.llm_timeout,
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Loading models at startup...")
+
+    try:
+        await asyncio.to_thread(_load_whisper)
+    except Exception as e:
+        logger.warning(f"STT model failed to load: {e}. Will load on first request.")
+
+    try:
+        en_path, en_cfg = config.get_tts_paths("en")
+        if en_path:
+            global voice_EN
+            voice_EN = _load_voice(en_path, en_cfg, "English")
+    except Exception as e:
+        logger.warning(f"English TTS failed to load: {e}. Will load on first request.")
+
+    try:
+        ar_path, ar_cfg = config.get_tts_paths("ar")
+        if ar_path:
+            global voice_AR
+            voice_AR = _load_voice(ar_path, ar_cfg, "Arabic")
+    except Exception as e:
+        logger.warning(f"Arabic TTS failed to load: {e}. Will load on first request.")
+
     await mcp_wrapper.initialize_servers()
     yield
     await mcp_wrapper.close()
@@ -101,19 +191,17 @@ async def health_check():
     return {
         "status": "healthy",
         "device": WHISPER_DEVICE,
-        "models_loaded": {
-            "stt": model is not None,
-            "tts_en": voice_EN is not None,
-            "tts_ar": voice_AR is not None,
-        },
+        "models": models_info,
     }
 
 
 def stt_transcribe(audio_file) -> Tuple[str, str]:
+    model = _load_whisper()
     segments, info = model.transcribe(
         audio_file,
-        vad_filter=True,
-        beam_size=5,
+        vad_filter=WHISPER_VAD_FILTER,
+        vad_parameters=WHISPER_VAD_PARAMS,
+        beam_size=WHISPER_BEAM_SIZE,
     )
     stt_output = " ".join(segment.text for segment in segments).strip()
     lang = getattr(info, "language", "en")
@@ -129,7 +217,12 @@ async def llm_process(llm_input: str) -> str:
 
 async def tts_synthesize(text: Optional[str], lang: str) -> io.BytesIO:
     use_ar = str(lang).lower().startswith("ar")
-    voice = voice_AR if (use_ar and voice_AR is not None) else voice_EN
+    voice = (
+        _get_voice_AR() if (use_ar and _get_voice_AR() is not None) else _get_voice_EN()
+    )
+
+    if voice is None:
+        raise RuntimeError("No TTS voice available")
 
     t = (text or "").strip() or " "
     wav_buffer = io.BytesIO()
@@ -226,7 +319,11 @@ async def process_audio_stream(file: UploadFile = File(...)):
 
     async def audio_stream_generator():
         use_ar = str(stt_lang).lower().startswith("ar")
-        voice = voice_AR if (use_ar and voice_AR is not None) else voice_EN
+        voice = (
+            _get_voice_AR()
+            if (use_ar and _get_voice_AR() is not None)
+            else _get_voice_EN()
+        )
         t = (tts_text or "").strip() or " "
 
         read_fd, write_fd = os.pipe()

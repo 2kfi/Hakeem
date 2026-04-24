@@ -57,6 +57,7 @@ class Config:
     llm_api_url: str = "http://localhost:2312/v1"
     llm_api_key: str = "sk-no-key-required"
     llm_model: str = "local-model"
+    llm_timeout: float = 120.0
 
     mcp_servers: List[str] = field(default_factory=list)
     mcp_max_retries: int = 2
@@ -126,51 +127,85 @@ class Config:
             llm_api_url=llm_cfg.get("api_url", "http://localhost:2312/v1"),
             llm_api_key=llm_cfg.get("api_key", "sk-no-key-required"),
             llm_model=llm_cfg.get("model", "local-model"),
+            llm_timeout=llm_cfg.get("timeout", 120.0),
             mcp_servers=mcp_cfg.get("servers", []),
             mcp_max_retries=mcp_cfg.get("max_retries", 2),
         )
 
-    def get_stt_path(self) -> str:
-        if is_local_path(self.stt_model):
-            if os.path.exists(self.stt_model):
-                return self.stt_model
-            folder = os.path.join(
-                self.models_storage_path, self.stt_model.split("/")[-1]
-            )
-            if os.path.exists(folder):
-                return folder
-            return self.stt_model
-        return self.stt_model
+    def _resolve_path(self, path: str) -> Tuple[str, bool]:
+        if not path:
+            return path, False
+
+        if path.startswith("/"):
+            if os.path.exists(path):
+                return path, True
+            return path, False
+
+        if os.path.exists(path):
+            return os.path.abspath(path), True
+
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            return abs_path, True
+
+        normalized_storage = os.path.normpath(os.path.abspath(self.models_storage_path))
+        normalized_abs = os.path.normpath(abs_path)
+
+        if normalized_abs.startswith(normalized_storage + os.sep):
+            return normalized_abs, True
+
+        if not normalized_abs.startswith(normalized_storage):
+            storage_folder = os.path.join(self.models_storage_path, path)
+            if os.path.exists(storage_folder):
+                return storage_folder, True
+
+        return path, False
+
+    def _resolve_tts_path(
+        self, local_path: Optional[str], repo: Optional[str], voice: Optional[str]
+    ) -> Tuple[Optional[str], Optional[str]]:
+        if local_path:
+            resolved, exists = self._resolve_path(local_path)
+            if exists:
+                return find_onnx_files(resolved)
+
+        if repo and voice:
+            hf_key = f"{repo}/{voice}"
+            resolved, exists = self._resolve_path(hf_key)
+            if exists:
+                return find_onnx_files(resolved)
+            return hf_key, None
+
+        return None, None
+
+    def _path_exists(self, path: Optional[str]) -> bool:
+        if not path:
+            return False
+        return os.path.exists(path)
+
+    def get_stt_path(self) -> Tuple[str, bool]:
+        resolved, exists = self._resolve_path(self.stt_model)
+        return resolved, exists
 
     def get_stt_is_local(self) -> bool:
-        if not self.stt_model:
-            return False
-        return is_local_path(self.stt_model)
+        _, exists = self.get_stt_path()
+        return exists
 
     def get_tts_paths(self, lang: str) -> Tuple[Optional[str], Optional[str]]:
         tts_cfg = self.tts.get(lang)
         if not tts_cfg:
             return None, None
-
-        if tts_cfg.local_path and os.path.exists(tts_cfg.local_path):
-            return find_onnx_files(tts_cfg.local_path)
-
-        if tts_cfg.repo and tts_cfg.voice:
-            hf_path = f"{tts_cfg.repo}/{tts_cfg.voice}"
-            folder = os.path.join(self.models_storage_path, hf_path.replace("/", "-"))
-            if os.path.exists(folder):
-                return find_onnx_files(folder)
-            return hf_path, None
-
-        return None, None
+        return self._resolve_tts_path(tts_cfg.local_path, tts_cfg.repo, tts_cfg.voice)
 
     def get_tts_urls(self, lang: str) -> List[Tuple[str, str]]:
         tts_cfg = self.tts.get(lang)
         if not tts_cfg:
             return []
 
-        if tts_cfg.local_path and os.path.exists(tts_cfg.local_path):
-            return []
+        if tts_cfg.local_path:
+            resolved, exists = self._resolve_path(tts_cfg.local_path)
+            if exists and find_onnx_files(resolved)[0]:
+                return []
 
         if not HF_AVAILABLE or not tts_cfg.repo or not tts_cfg.voice:
             return []
@@ -193,7 +228,14 @@ class Config:
             return []
 
     def get_stt_urls(self) -> List[Tuple[str, str]]:
-        if is_local_path(self.stt_model):
+        if not self.stt_model:
+            return []
+
+        _, exists = self._resolve_path(self.stt_model)
+        if exists:
+            return []
+
+        if is_local_path(self.stt_model) and os.path.exists(self.stt_model):
             return []
 
         base = f"https://huggingface.co/{self.stt_model}/resolve/main"

@@ -3,7 +3,7 @@
 # Copy to config.yaml when running with Docker
 
 models:
-  storage_path: "/app/models"
+  storage_path: "./models"
   download_on_startup: false
 
 app:
@@ -40,6 +40,7 @@ llm:
   api_url: "http://10.200.71.180:2312/v1"
   api_key: "sk-no-key-required"
   model: "local-model"
+  timeout: 120
 
 mcp:
   servers:
