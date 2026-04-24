@@ -125,3 +125,14 @@ def is_hf_repo(path: str) -> bool:
     if not path:
         return False
     return "/" in path and not is_local_path(path)
+
+
+def is_network_available(timeout: float = 3.0) -> bool:
+    """Check if outbound network access is available."""
+    import httpx
+
+    try:
+        response = httpx.get("https://huggingface.co", timeout=timeout)
+        return 200 <= response.status_code < 400
+    except Exception:
+        return False

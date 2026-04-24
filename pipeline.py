@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.config import get_config, setup_logging
-from src.shared import validate_audio_format, detect_language
+from src.shared import validate_audio_format, detect_language, is_network_available
 
 import downloader
 
@@ -109,34 +109,50 @@ def _load_whisper() -> WhisperModel:
             compute_type=WHISPER_COMPUTE_TYPE,
             local_files_only=exists,
         )
-    except Exception as first_err:
-        if not exists:
-            logger.warning(f"Local STT not found, running downloader...")
-            downloader.main()
-            path, exists = config.get_stt_path()
-            if exists and os.path.isabs(path):
-                path = os.path.relpath(path)
-            try:
-                model = WhisperModel(
-                    path,
-                    device=WHISPER_DEVICE,
-                    compute_type=WHISPER_COMPUTE_TYPE,
-                    local_files_only=exists,
-                )
-            except Exception:
-                logger.warning(f"Trying HF repo fallback...")
-                model = WhisperModel(
-                    config.stt_hf_repo,
-                    device=WHISPER_DEVICE,
-                    compute_type=WHISPER_COMPUTE_TYPE,
-                    local_files_only=False,
-                )
-        else:
-            raise first_err
+        whisper_model = model
+        logger.info("Loaded Whisper model")
+        return model
+    except Exception:
+        pass
 
-    whisper_model = model
-    logger.info(f"Loaded Whisper model")
-    return model
+    if not exists:
+        logger.warning("Local STT not found. Checking network availability...")
+        if not is_network_available():
+            logger.error(
+                "Network unavailable. Cannot download STT model. Please upload models/whisper-medium/ locally or enable network access."
+            )
+            raise RuntimeError(
+                "STT model not found locally and network is unavailable. "
+                "Upload models/whisper-medium/ folder or enable outbound network access."
+            )
+        logger.warning("Network available. Running downloader...")
+        downloader.main()
+        path, exists = config.get_stt_path()
+        if exists and os.path.isabs(path):
+            path = os.path.relpath(path)
+        try:
+            model = WhisperModel(
+                path,
+                device=WHISPER_DEVICE,
+                compute_type=WHISPER_COMPUTE_TYPE,
+                local_files_only=False,
+            )
+            whisper_model = model
+            logger.info("Loaded Whisper model")
+            return model
+        except Exception:
+            logger.warning("Downloader failed. Trying HF repo fallback...")
+            model = WhisperModel(
+                config.stt_hf_repo,
+                device=WHISPER_DEVICE,
+                compute_type=WHISPER_COMPUTE_TYPE,
+                local_files_only=False,
+            )
+            whisper_model = model
+            logger.info("Loaded Whisper model")
+            return model
+
+    raise RuntimeError(f"Failed to load Whisper model from {path}")
 
 
 def _load_voice(
