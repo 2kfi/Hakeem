@@ -4,7 +4,7 @@
 
 models:
   storage_path: "./models"
-  download_on_startup: false
+  download_on_startup: true
 
 app:
   host: "0.0.0.0"
@@ -23,8 +23,12 @@ stt:
 tts:
   en:
     local_path: "./models/TTS-CORI-EN"
+    repo: "rhasspy/piper-voices"
+    voice: "en.en_GB.cori.high"
   ar:
     local_path: "./models/TTS-KAREEM-ARABIC"
+    repo: "rhasspy/piper-voices"
+    voice: "ar.ar_JO.kareem.medium"
 
 settings:
   volume: 0.5

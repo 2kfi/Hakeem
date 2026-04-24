@@ -112,47 +112,53 @@ def _load_whisper() -> WhisperModel:
         whisper_model = model
         logger.info("Loaded Whisper model")
         return model
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Local load failed: {e}")
+        if exists:
+            logger.warning(
+                "Local files exist but failed to load. Will try downloading..."
+            )
+            if not is_network_available():
+                logger.error("Network unavailable. Cannot re-download.")
+                raise RuntimeError(
+                    f"STT local load failed ({e}) and network unavailable to redownload. "
+                    f"Please check local model files at {path}"
+                )
+        else:
+            if not is_network_available():
+                logger.error(
+                    "Network unavailable. Cannot download STT model. Please upload models/whisper-medium/ locally or enable network access."
+                )
+                raise RuntimeError(
+                    "STT model not found locally and network is unavailable. "
+                    "Upload models/whisper-medium/ folder or enable outbound network access."
+                )
 
-    if not exists:
-        logger.warning("Local STT not found. Checking network availability...")
-        if not is_network_available():
-            logger.error(
-                "Network unavailable. Cannot download STT model. Please upload models/whisper-medium/ locally or enable network access."
-            )
-            raise RuntimeError(
-                "STT model not found locally and network is unavailable. "
-                "Upload models/whisper-medium/ folder or enable outbound network access."
-            )
-        logger.warning("Network available. Running downloader...")
-        downloader.main()
-        path, exists = config.get_stt_path()
-        if exists and os.path.isabs(path):
-            path = os.path.relpath(path)
-        try:
-            model = WhisperModel(
-                path,
-                device=WHISPER_DEVICE,
-                compute_type=WHISPER_COMPUTE_TYPE,
-                local_files_only=False,
-            )
-            whisper_model = model
-            logger.info("Loaded Whisper model")
-            return model
-        except Exception:
-            logger.warning("Downloader failed. Trying HF repo fallback...")
-            model = WhisperModel(
-                config.stt_hf_repo,
-                device=WHISPER_DEVICE,
-                compute_type=WHISPER_COMPUTE_TYPE,
-                local_files_only=False,
-            )
-            whisper_model = model
-            logger.info("Loaded Whisper model")
-            return model
-
-    raise RuntimeError(f"Failed to load Whisper model from {path}")
+    logger.warning("Trying to download STT model...")
+    downloader.main()
+    path, exists = config.get_stt_path()
+    path_abs = os.path.abspath(path) if not os.path.isabs(path) else path
+    try:
+        model = WhisperModel(
+            path_abs,
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
+            local_files_only=False,
+        )
+        whisper_model = model
+        logger.info("Loaded Whisper model")
+        return model
+    except Exception as e:
+        logger.warning(f"Downloaded model load failed: {e}. Trying HF repo fallback...")
+        model = WhisperModel(
+            config.stt_hf_repo,
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
+            local_files_only=False,
+        )
+        whisper_model = model
+        logger.info("Loaded Whisper model")
+        return model
 
 
 def _load_voice(
@@ -164,17 +170,58 @@ def _load_voice(
         logger.info(f"Loaded {lang} voice: {model_path}")
         return voice
     except Exception as e:
-        logger.error(f"Failed to load {lang} voice: {e}")
+        logger.error(f"Failed to load {lang} voice from {model_path}: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
         return None
+
+
+def _get_voice_from_config(lang: str, lang_name: str) -> Optional[PiperVoice]:
+    tts_cfg = config.tts.get(lang)
+    if not tts_cfg:
+        logger.warning(f"No TTS config for {lang}")
+        return None
+
+    model_path, config_path = config.get_tts_paths(lang)
+    if model_path and config_path:
+        voice = _load_voice(model_path, config_path, lang_name)
+        if voice:
+            return voice
+
+    if tts_cfg.repo and tts_cfg.voice:
+        logger.warning(
+            f"Local TTS failed for {lang}, trying HF repo: {tts_cfg.repo}/{tts_cfg.voice}"
+        )
+        try:
+            from huggingface_hub import snapshot_download
+
+            repo_id = tts_cfg.repo
+            voice_dir = tts_cfg.voice
+            logger.info(f"Downloading {voice_dir} voice from HF: {repo_id}/{voice_dir}")
+            local_path = snapshot_download(
+                repo_id=repo_id,
+                allow_patterns=[f"{voice_dir}/*", f"{voice_dir}/.*"],
+                cache_dir=config.models_storage_path,
+            )
+            voice = PiperVoice.load(local_path)
+            logger.info(f"Loaded {lang} voice from HF: {local_path}")
+            return voice
+        except Exception as e:
+            logger.error(f"Failed to download/load {lang} voice from HF: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
+
+    logger.error(f"No TTS model available for {lang}")
+    return None
 
 
 def _get_voice_EN() -> Optional[PiperVoice]:
     global voice_EN
     if voice_EN is not None:
         return voice_EN
-    model_path, config_path = config.get_tts_paths("en")
-    if model_path and config_path:
-        voice_EN = _load_voice(model_path, config_path, "English")
+    voice_EN = _get_voice_from_config("en", "English")
     return voice_EN
 
 
@@ -182,9 +229,7 @@ def _get_voice_AR() -> Optional[PiperVoice]:
     global voice_AR
     if voice_AR is not None:
         return voice_AR
-    model_path, config_path = config.get_tts_paths("ar")
-    if model_path and config_path:
-        voice_AR = _load_voice(model_path, config_path, "Arabic")
+    voice_AR = _get_voice_from_config("ar", "Arabic")
     return voice_AR
 
 
@@ -207,18 +252,14 @@ async def lifespan(app: FastAPI):
         logger.warning(f"STT model failed to load: {e}. Will load on first request.")
 
     try:
-        en_path, en_cfg = config.get_tts_paths("en")
-        if en_path:
-            global voice_EN
-            voice_EN = _load_voice(en_path, en_cfg, "English")
+        global voice_EN
+        voice_EN = _get_voice_EN()
     except Exception as e:
         logger.warning(f"English TTS failed to load: {e}. Will load on first request.")
 
     try:
-        ar_path, ar_cfg = config.get_tts_paths("ar")
-        if ar_path:
-            global voice_AR
-            voice_AR = _load_voice(ar_path, ar_cfg, "Arabic")
+        global voice_AR
+        voice_AR = _get_voice_AR()
     except Exception as e:
         logger.warning(f"Arabic TTS failed to load: {e}. Will load on first request.")
 
