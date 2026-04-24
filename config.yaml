@@ -8,25 +8,22 @@ models:
 
 app:
   host: "0.0.0.0"
-  port: 8003
+  port: 8080
   log_level: "INFO"
 
 # STT - compatible with Docker volumes
 stt:
-  model: "Systran/faster-whisper-medium"
+  model: "models/whisper-medium"
   device: "auto"
   compute_type: "int8"
   beam_size: 5
 
-# TTS - use local paths (volumes mounted at /app/models)
+# TTS - use local paths
 tts:
   en:
-    repo: "rhasspy/piper-voices"
-    voice: "en_GB/cori/high"
-    local_path: "/app/models/EN"
+    local_path: "./models/TTS-CORI-EN"
   ar:
-    repo: "speaches-ai/piper-ar_JO-kareem-medium"
-    local_path: "/app/models/AR"
+    local_path: "./models/TTS-KAREEM-ARABIC"
 
 settings:
   volume: 0.5
@@ -46,6 +43,6 @@ llm:
 
 mcp:
   servers:
-    - "http://10.200.71.180:2527/sse"
-    - "http://10.200.71.180:2528/sse"
+#    - "http://10.200.71.180:2527/sse"
+#    - "http://10.200.71.180:2528/sse"
   max_retries: 2

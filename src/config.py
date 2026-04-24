@@ -40,8 +40,8 @@ class Config:
     stt_beam_size: int = 5
     stt_vad_filter: bool = True
     stt_vad_threshold: float = 0.5
-    stt_vad_min_speech_ms: int = 250
-    stt_vad_min_silence_ms: int = 200
+    stt_vad_min_speech_duration_ms: int = 250
+    stt_vad_min_silence_duration_ms: int = 200
 
     tts: dict = field(default_factory=dict)
 
@@ -108,8 +108,12 @@ class Config:
             stt_beam_size=stt_cfg.get("beam_size", 5),
             stt_vad_filter=stt_cfg.get("vad_filter", True),
             stt_vad_threshold=stt_cfg.get("vad_threshold", 0.5),
-            stt_vad_min_speech_ms=stt_cfg.get("vad_min_speech_ms", 250),
-            stt_vad_min_silence_ms=stt_cfg.get("vad_min_silence_ms", 200),
+            stt_vad_min_speech_duration_ms=stt_cfg.get(
+                "vad_min_speech_duration_ms", 250
+            ),
+            stt_vad_min_silence_duration_ms=stt_cfg.get(
+                "vad_min_silence_duration_ms", 200
+            ),
             tts=tts_dict,
             tts_volume=settings.get("volume", 0.5),
             tts_length_scale=settings.get("length_scale", 1.0),

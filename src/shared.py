@@ -18,7 +18,7 @@ ALLOWED_AUDIO_FORMATS = frozenset(
     }
 )
 
-AUDIO_EXTENSIONS = frozenset({".wav", ".wave", ".ogg", ".flac", ".mp3"})
+AUDIO_EXTENSIONS = (".wav", ".wave", ".ogg", ".flac", ".mp3")
 
 
 def validate_audio_format(filename: str, content_type: str) -> bool:

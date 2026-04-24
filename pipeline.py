@@ -59,8 +59,8 @@ WHISPER_BEAM_SIZE = config.stt_beam_size
 WHISPER_VAD_FILTER = config.stt_vad_filter
 WHISPER_VAD_PARAMS = {
     "threshold": config.stt_vad_threshold,
-    "min_speech_duration_ms": config.stt_vad_min_speech_ms,
-    "min_silence_ms": config.stt_vad_min_silence_ms,
+    "min_speech_duration_ms": config.stt_vad_min_speech_duration_ms,
+    "min_silence_duration_ms": config.stt_vad_min_silence_duration_ms,
 }
 WHISPER_LOCAL_ONLY = config.get_stt_is_local()
 
@@ -87,15 +87,15 @@ except Exception as e:
 
 try:
     voice_EN = PiperVoice.load(TTS_MODEL_EN, config_path=TTS_CONFIG_EN)
-    logger.info("Loaded English voice.")
+    logger.info(f"Loaded English voice: {TTS_MODEL_EN}")
 except Exception as e:
     logger.error(f"Failed to load English voice: {e}")
     raise
 
 try:
     voice_AR = PiperVoice.load(TTS_MODEL_AR, config_path=TTS_CONFIG_AR)
-    logger.info("Loaded Arabic voice.")
-except Exception:
+    logger.info(f"Loaded Arabic voice: {TTS_MODEL_AR}")
+except Exception as e:
     voice_AR = None
     logger.warning("Arabic voice not available; will fallback to English voice.")
 

@@ -92,7 +92,7 @@ class MCPWrapper:
         self.llama_model = llama_model
         self.api_key = api_key
         self.mcp_managers: List[MCPSessionManager] = [
-            MCPSessionManager(url, api_key=api_key) for url in mcp_urls
+            MCPSessionManager(url, api_key=api_key) for url in (mcp_urls or [])
         ]
         self.tool_map: Dict[str, MCPSessionManager] = {}
         self._init_lock = asyncio.Lock()

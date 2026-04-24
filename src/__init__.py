@@ -2,6 +2,6 @@
 
 from .config import Config, get_config, setup_logging
 from .mcp import MCPWrapper, MCPSessionManager
-from .shared import detect_language, validate_audio
+from .shared import detect_language, validate_audio_format
 
 __version__ = "0.1.0"
