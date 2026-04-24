@@ -98,6 +98,8 @@ def _load_whisper() -> WhisperModel:
         return whisper_model
 
     path, exists = config.get_stt_path()
+    if exists and os.path.isabs(path):
+        path = os.path.relpath(path)
     logger.info(f"Loading Whisper model from: {path}")
     model = WhisperModel(
         path,
