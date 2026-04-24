@@ -102,14 +102,41 @@ def _load_whisper() -> WhisperModel:
     if exists and os.path.isabs(path):
         path = os.path.relpath(path)
     logger.info(f"Loading Whisper model from: {path}")
-    model = WhisperModel(
-        path,
-        device=WHISPER_DEVICE,
-        compute_type=WHISPER_COMPUTE_TYPE,
-        local_files_only=exists,
-    )
+
+    try:
+        model = WhisperModel(
+            path,
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
+            local_files_only=exists,
+        )
+    except Exception as first_err:
+        if not exists:
+            logger.warning(f"Local STT not found, running downloader...")
+            downloader.main()
+            path, exists = config.get_stt_path()
+            if exists and os.path.isabs(path):
+                path = os.path.relpath(path)
+            try:
+                model = WhisperModel(
+                    path,
+                    device=WHISPER_DEVICE,
+                    compute_type=WHISPER_COMPUTE_TYPE,
+                    local_files_only=exists,
+                )
+            except Exception:
+                logger.warning(f"Trying HF repo fallback...")
+                model = WhisperModel(
+                    config.stt_hf_repo,
+                    device=WHISPER_DEVICE,
+                    compute_type=WHISPER_COMPUTE_TYPE,
+                    local_files_only=False,
+                )
+        else:
+            raise first_err
+
     whisper_model = model
-    logger.info(f"Loaded Whisper model: {path}")
+    logger.info(f"Loaded Whisper model")
     return model
 
 

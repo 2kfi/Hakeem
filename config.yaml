@@ -14,6 +14,7 @@ app:
 # STT - compatible with Docker volumes
 stt:
   model: "models/whisper-medium"
+  hf_repo: "Systran/faster-whisper-medium"
   device: "auto"
   compute_type: "int8"
   beam_size: 5

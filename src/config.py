@@ -35,6 +35,7 @@ class Config:
     app_log_level: str = "INFO"
 
     stt_model: str = "Systran/faster-whisper-medium"
+    stt_hf_repo: str = "Systran/faster-whisper-medium"
     stt_device: str = "auto"
     stt_compute_type: str = "int8"
     stt_beam_size: int = 5
@@ -104,6 +105,7 @@ class Config:
             app_port=app_cfg.get("port", 8003),
             app_log_level=app_cfg.get("log_level", "INFO"),
             stt_model=stt_cfg.get("model", "Systran/faster-whisper-medium"),
+            stt_hf_repo=stt_cfg.get("hf_repo", "Systran/faster-whisper-medium"),
             stt_device=stt_cfg.get("device", "auto"),
             stt_compute_type=stt_cfg.get("compute_type", "int8"),
             stt_beam_size=stt_cfg.get("beam_size", 5),
@@ -231,19 +233,13 @@ class Config:
         if not self.stt_model:
             return []
 
-        _, exists = self._resolve_path(self.stt_model)
+        resolved, exists = self._resolve_path(self.stt_model)
         if exists:
             return []
 
-        if is_local_path(self.stt_model) and os.path.exists(self.stt_model):
-            return []
-
-        base = f"https://huggingface.co/{self.stt_model}/resolve/main"
-        model_path = os.path.join(
-            self.models_storage_path, self.stt_model.split("/")[-1]
-        )
+        base = f"https://huggingface.co/{self.stt_hf_repo}/resolve/main"
         files = ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"]
-        return [(f"{base}/{f}", f"{model_path}/{f}") for f in files]
+        return [(f"{base}/{f}", f"{resolved}/{f}") for f in files]
 
 
 _config: Optional[Config] = None
