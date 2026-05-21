@@ -1,5 +1,0 @@
-pyaudio
-numpy
-requests
-sounddevice
-soundfile

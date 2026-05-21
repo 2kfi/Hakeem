@@ -1,22 +1,54 @@
-FROM python:3.11-alpine
+# =============================================================================
+# Najim Backend — Dockerfile
+# Multi-stage build for minimal size.
+# =============================================================================
 
-RUN apk add --no-cache \
-    libsndfile \
-    portaudio \
-    ffmpeg \
-    gcc \
-    musl-dev \
-    linux-headers
+# ─── Stage 1: Builder ───────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=120
+
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --user --upgrade pip && \
+    pip install --user --prefer-binary -r requirements.txt
+
+# ─── Stage 2: Runtime ──────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Runtime system deps (audio codecs, piper needs libsndfile)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
 
 WORKDIR /app
 
-COPY backend-requirements.txt .
-RUN pip install --no-cache-dir -r backend-requirements.txt
+# Copy app code
+COPY core/ core/
+COPY sessions/ sessions/
+COPY tools/ tools/
+COPY pipeline/ pipeline/
+COPY api/ api/
+COPY app.py .
+COPY config.yaml .
 
-COPY pipeline.py config.py downloader.py ./
+# ─── Expose ────────────────────────────────────────────────────────────────
+EXPOSE 8080
 
-RUN mkdir -p /app/logs
+# ─── Entrypoint ────────────────────────────────────────────────────────────
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-EXPOSE 8003
-
-CMD ["python", "pipeline.py"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

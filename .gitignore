@@ -1,32 +1,32 @@
-.venv/
-models/TTS-CORI-EN
-models/TTS-KAREEM-ARABIC
-models/whisper-medium
-models/MedGemma
-models/Hakeem
-__pycache__
-MCP-servers/simple-calc
-*.pyc
-*.pyo
-.env
-logs/
-openWakeWord/
-__pycache__
+# Python
 __pycache__/
-.ruff_cahce
-.ruff_cahce/
-.env
-.venv
+*.py[cod]
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
 .venv/
-venv
 venv/
-testing
-testing/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dmypy.json
+
+# Environment
+.env
+
+# Project
 config.yaml
+logs/
+output/
+testing/
+audio.mp3
+pre-code.py
+openWakeWord/
+
+# Models
 models/TTS-CORI-EN
 models/TTS-KAREEM-ARABIC
 models/whisper-medium
 models/MedGemma
-pre-code.py
-audio.mp3
-output/
