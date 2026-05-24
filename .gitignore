@@ -25,6 +25,9 @@ audio.mp3
 pre-code.py
 openWakeWord/
 
+# Generated
+graphify-out/
+
 # Models
 models/TTS-CORI-EN
 models/TTS-KAREEM-ARABIC

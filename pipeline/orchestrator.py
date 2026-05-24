@@ -4,8 +4,10 @@ from typing import Optional
 
 from core.config import get_settings
 from core.redis_manager import RedisManager
-from sessions.conversation_store import ConversationStore
-from sessions.session_registry import SessionRegistry
+from pipeline.workers.stt_worker import process_stt_jobs
+from pipeline.workers.llm_worker import process_llm_jobs
+from pipeline.workers.tts_worker import process_tts_jobs
+from pipeline.workers.ws_sender import process_responses
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +28,6 @@ class WorkerManager:
         node = self._settings.cluster.node_id
         prefix = self._settings.pipeline.consumer_prefix
         self._consumer_id = f"{prefix}:{node}"
-
-        from pipeline.workers.stt_worker import process_stt_jobs
-        from pipeline.workers.llm_worker import process_llm_jobs
-        from pipeline.workers.tts_worker import process_tts_jobs
-        from pipeline.workers.ws_sender import process_responses
 
         stage_configs = [
             ("STT", self._settings.pipeline.stt_workers, process_stt_jobs, "stt"),

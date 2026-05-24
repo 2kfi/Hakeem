@@ -1,18 +1,18 @@
 #!/bin/sh
 # =============================================================================
-# Najim Backend — Docker Entrypoint
+# Hakeem Backend — Docker Entrypoint
 # Reads environment variables, generates config.yaml, starts uvicorn.
 # =============================================================================
 set -e
 
 if [ -n "$REDIS_URL" ]; then
-    echo "[najim] Using REDIS_URL: $REDIS_URL"
+    echo "[hakeem] Using REDIS_URL: $REDIS_URL"
 elif [ -n "$REDIS_HOST" ]; then
-    echo "[najim] Using REDIS_HOST: $REDIS_HOST"
+    echo "[hakeem] Using REDIS_HOST: $REDIS_HOST"
 fi
 
 if [ -z "$JWT_SECRET" ]; then
-    echo "[najim] WARNING: JWT_SECRET not set! Generating ephemeral secret."
+    echo "[hakeem] WARNING: JWT_SECRET not set! Generating ephemeral secret."
     JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 fi
 
@@ -41,7 +41,7 @@ jwt:
 cluster:
   node_id: "${CLUSTER_NODE_ID:-$(hostname)}"
   node_role: "worker"
-  pubsub_channel: "${PUBSUB_CHANNEL:-najim:events}"
+  pubsub_channel: "${PUBSUB_CHANNEL:-hakeem:events}"
 
 auth:
   jwt_only: ${AUTH_JWT_ONLY:-true}
@@ -107,7 +107,7 @@ pipeline:
   llm_stream: "llm_jobs"
   tts_stream: "tts_jobs"
   response_stream: "responses"
-  consumer_group: "${PIPELINE_CONSUMER_GROUP:-najim_workers}"
+  consumer_group: "${PIPELINE_CONSUMER_GROUP:-hakeem_workers}"
   consumer_prefix: "${CLUSTER_NODE_ID:-node}"
   stt_max_retries: ${PIPELINE_STT_RETRIES:-3}
   llm_max_retries: ${PIPELINE_LLM_RETRIES:-2}
@@ -119,25 +119,25 @@ models:
   download_on_startup: ${MODEL_DOWNLOAD:-true}
 EOF
 
-echo "[najim] config.yaml generated"
+echo "[hakeem] config.yaml generated"
 
 if [ "$MODEL_DOWNLOAD" = "true" ] && [ -f "scripts/downloader.py" ]; then
-    echo "[najim] Downloading models..."
-    python3 scripts/downloader.py || echo "[najim] Model download skipped"
+    echo "[hakeem] Downloading models..."
+    python3 scripts/downloader.py || echo "[hakeem] Model download skipped"
 fi
 
 # Generate JWT for admin testing if DEBUG is on
 if [ "${DEBUG:-false}" = "true" ]; then
-    echo "[najim] DEBUG mode — generating test admin token..."
+    echo "[hakeem] DEBUG mode — generating test admin token..."
     python3 -c "
 from core.jwt_auth import get_jwt_manager
 mgr = get_jwt_manager()
 token = mgr.create_token('admin', 'admin-device', permissions=['admin'])
-print(f'[najim] Admin JWT: {token}')
+print(f'[hakeem] Admin JWT: {token}')
 "
 fi
 
-echo "[najim] Starting uvicorn on 0.0.0.0:${API_PORT:-8080}"
+echo "[hakeem] Starting uvicorn on 0.0.0.0:${API_PORT:-8080}"
 exec python3 -m uvicorn app:app \
     --host 0.0.0.0 \
     --port ${API_PORT:-8080} \

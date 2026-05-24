@@ -19,11 +19,7 @@ class TTSQueue:
         self._queue_key = "tts_queue"
 
     async def enqueue(self, device_id: str, text: str, language: str = None, priority: int = 0) -> int:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        loop = asyncio.get_running_loop()
         score = loop.time() + priority
         return await self.redis.zadd(self._queue_key, {f"{device_id}:{text[:50]}": score})
 
@@ -47,7 +43,8 @@ class TTSQueue:
             raise RuntimeError(f"TTS voice for language '{lang}' not available")
 
         syn_config = state.get_synthesis_config()
-        output_file = tempfile.mktemp(suffix=".wav")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            output_file = tmp.name
         try:
             if syn_config:
                 await asyncio.to_thread(

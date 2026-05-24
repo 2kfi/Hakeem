@@ -45,13 +45,13 @@ tts_jobs                     → fields: device_id, text, language, voice
 responses                    → fields: device_id, audio_data, mime_type, text
 ```
 
-Each stream uses a **consumer group** (`najim-workers`) so jobs are distributed across nodes and retried on failure.
+Each stream uses a **consumer group** (`hakeem-workers`) so jobs are distributed across nodes and retried on failure.
 
 ### Pub/Sub Channels — cross-node messaging
 
 ```
-najim:events                 → Cluster-wide announcements (node up/down)
-najim:ws_send:{node_id}      → Direct message to a specific node (tool requests, WS forwarding)
+hakeem:events                 → Cluster-wide announcements (node up/down)
+hakeem:ws_send:{node_id}      → Direct message to a specific node (tool requests, WS forwarding)
 ```
 
 ## Key Access Patterns
@@ -71,7 +71,7 @@ najim:ws_send:{node_id}      → Direct message to a specific node (tool request
 | Read from pipeline | `XREADGROUP group consumer streams >` | `redis.xreadgroup(...)` |
 | Acknowledge job | `XACK stt_jobs group id` | `redis.xack(stream, group, id)` |
 | Check pending | `XPENDING stt_jobs group` | `redis.xpending(stream, group)` |
-| Publish message | `PUBLISH najim:ws_send:node-1 msg` | `redis.publish(channel, msg)` |
+| Publish message | `PUBLISH hakeem:ws_send:node-1 msg` | `redis.publish(channel, msg)` |
 | Wait for tool response | `BLPOP tool_resp:{id} 30` | `redis.blpop(key, timeout=30)` |
 
 ## Why Redis (Not PostgreSQL)?

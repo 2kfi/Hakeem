@@ -107,8 +107,8 @@ curl http://localhost:8080/health
 
 ```bash
 # Get an admin JWT from the server (set DEBUG=true in docker-compose.yml):
-docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET najim
-# → [najim] Admin JWT: eyJhbGciOi...
+docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET hakeem
+# → [hakeem] Admin JWT: eyJhbGciOi...
 
 # Connect
 wscat -c "ws://localhost:8080/api/v1/connect?token=<ADMIN_JWT>"

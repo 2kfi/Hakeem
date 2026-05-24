@@ -1,4 +1,4 @@
-# Najim Backend — Complete Architecture Guide
+# Hakeem Backend — Complete Architecture Guide
 
 > **Who is this for?** You know how to code. You understand APIs. But terms like "load balancer", "JWT", "Redis pub/sub", "correlation ID", "WebSocket" are fuzzy.  
 > By the end of this, you'll understand every bit that enters and leaves this cluster.
@@ -48,7 +48,7 @@
 
 ## 1. The One-Sentence Summary
 
-> Najim is a **voice assistant backend** running on 3 Intel Atom computers. An Android app connects via WebSocket, sends audio, the backend runs STT → LLM → Tool Calls → TTS, and streams audio back — all using **Redis** as the shared brain so any node can handle any request.
+> Hakeem is a **voice assistant backend** running on 3 Intel Atom computers. An Android app connects via WebSocket, sends audio, the backend runs STT → LLM → Tool Calls → TTS, and streams audio back — all using **Redis** as the shared brain so any node can handle any request.
 
 ---
 
@@ -118,7 +118,7 @@
 
 ### The Problem
 
-You have 3 Atom nodes. Your Android app only knows ONE URL (like `ws://najim.example.com/connect`). It doesn't know there are 3 computers behind it.
+You have 3 Atom nodes. Your Android app only knows ONE URL (like `ws://hakeem.example.com/connect`). It doesn't know there are 3 computers behind it.
 
 ### The Solution
 
@@ -437,15 +437,15 @@ Python: redis.xadd("stt_queue", {"device_id": "...", "audio_data": "..."})
 ```
 Channels:
   ┌─────────────────────────────┐
-  │ najim:events               │  ← Cluster-wide announcements
+  │ hakeem:events               │  ← Cluster-wide announcements
   ├─────────────────────────────┤
-  │ najim:ws_send:node-1       │  ← Only node-1 listens here
-  │ najim:ws_send:node-2       │  ← Only node-2 listens here
-  │ najim:ws_send:node-3       │  ← Only node-3 listens here
+  │ hakeem:ws_send:node-1       │  ← Only node-1 listens here
+  │ hakeem:ws_send:node-2       │  ← Only node-2 listens here
+  │ hakeem:ws_send:node-3       │  ← Only node-3 listens here
   └─────────────────────────────┘
 
-Python (Publisher): redis.publish("najim:ws_send:node-1", message)
-Python (Subscriber): pubsub.subscribe("najim:ws_send:node-1")
+Python (Publisher): redis.publish("hakeem:ws_send:node-1", message)
+Python (Subscriber): pubsub.subscribe("hakeem:ws_send:node-1")
 ```
 
 **Use**: Cross-node communication. Explained in section 14.
@@ -699,7 +699,7 @@ A **correlation ID** is a unique identifier (UUID) that ties a request to its re
                       │      EX 35 (auto-delete in 35s)  │                            │
                       │                                  │                            │
    3. Publish to     │                                  │                            │
-      phone's node   │  PUBLISH najim:ws_send:node-2    │                            │
+      phone's node   │  PUBLISH hakeem:ws_send:node-2    │                            │
       ──────────────►│      {type: "tool_request",      │                            │
                       │       correlation_id: "corr_abc",│                            │
                       │       tool: "index_files",       │  ◄── Node-2 receives      │
@@ -735,7 +735,7 @@ A **correlation ID** is a unique identifier (UUID) that ties a request to its re
 ### Why This Works Across Nodes
 
 Node-1 doesn't know which node the phone is on. But it doesn't matter:
-- It publishes to the channel for **all nodes** (or the specific node via `najim:ws_send:node-2`)
+- It publishes to the channel for **all nodes** (or the specific node via `hakeem:ws_send:node-2`)
 - Whichever node has the phone's WebSocket will receive the request
 - That node sends it to the phone
 - When the phone responds, that node calls `bridge.handle_response(correlation_id, result)`
@@ -784,8 +784,8 @@ Think of it like a **radio station**:
 
 | Channel | Who Publishes | Who Subscribes | Purpose |
 |---------|--------------|----------------|---------|
-| `najim:events` | Any node | All nodes | Cluster-wide announcements |
-| `najim:ws_send:{node_id}` | Any node | Only that specific node | Send message to device on that node |
+| `hakeem:events` | Any node | All nodes | Cluster-wide announcements |
+| `hakeem:ws_send:{node_id}` | Any node | Only that specific node | Send message to device on that node |
 
 ### Example: Node-1 needs to send a tool request to a phone on Node-2
 
@@ -796,7 +796,7 @@ phone_node = await device_registry.get_node_for_device("phone-android-123")
 # Returns: "node-2"
 
 # 2. Publish to node-2's channel
-channel = f"najim:ws_send:{phone_node}"  # "najim:ws_send:node-2"
+channel = f"hakeem:ws_send:{phone_node}"  # "hakeem:ws_send:node-2"
 await redis.publish(channel, {
     "type": "tool_request",
     "correlation_id": "corr_abc",
@@ -808,7 +808,7 @@ await redis.publish(channel, {
 
 ```python
 # Node-2 code (in _start_ws_listener, runs on startup):
-# Subscribes to "najim:ws_send:node-2"
+# Subscribes to "hakeem:ws_send:node-2"
 # When message arrives:
 device_id = message["device_id"]
 ws = _active_connections[device_id]
@@ -1070,11 +1070,11 @@ The phone is connected to ONE node (e.g., node-1). But TTS Worker could be on no
 
 ### Consumer Groups: How Multiple Nodes Share Work
 
-Each stream has a **consumer group** called `najim_workers`. This is a Redis feature that distributes messages across consumers.
+Each stream has a **consumer group** called `hakeem_workers`. This is a Redis feature that distributes messages across consumers.
 
 ```
 Stream: stt_jobs
-Consumer Group: najim_workers
+Consumer Group: hakeem_workers
 Consumers: worker:node-1:stt-0, worker:node-2:stt-0, worker:node-3:stt-0
 
 When a job arrives:
@@ -1153,7 +1153,7 @@ When you start the server (`uvicorn app:app`):
    - Not a connection, just a configured HTTP client
 
 5. Start Pub/Sub listener
-   - Subscribe to najim:ws_send:{this_node_id}
+   - Subscribe to hakeem:ws_send:{this_node_id}
    - This allows other nodes to route messages through this node
 
 6. Start serving
@@ -1225,7 +1225,7 @@ A **consumer group** is like a team of workers sharing a queue. Each message is 
 
 ```
 Stream: stt_jobs
-Group: najim_workers
+Group: hakeem_workers
 Consumers: [worker-node-1-stt, worker-node-2-stt, worker-node-3-stt]
 
 Entry 1 → goes to worker-node-1-stt
@@ -1238,24 +1238,24 @@ Entry 4 → goes to worker-node-1-stt (round-robin)
 
 ```bash
 # Create group (once)
-XGROUP CREATE stt_jobs najim_workers $ MKSTREAM
+XGROUP CREATE stt_jobs hakeem_workers $ MKSTREAM
 # $ = start from now (new messages only)
 # 0 = start from beginning (all messages)
 # MKSTREAM = create stream if it doesn't exist
 
 # Read as a consumer
-XREADGROUP GROUP najim_workers consumer-node-1-stt COUNT 1 BLOCK 5000 STREAMS stt_jobs >
+XREADGROUP GROUP hakeem_workers consumer-node-1-stt COUNT 1 BLOCK 5000 STREAMS stt_jobs >
 # The ">" means "give me new messages I haven't seen"
 
 # Acknowledge (mark as processed)
-XACK stt_jobs najim_workers 1700000000001-0
+XACK stt_jobs hakeem_workers 1700000000001-0
 
 # Check pending messages (not yet acknowledged)
-XPENDING stt_jobs najim_workers
+XPENDING stt_jobs hakeem_workers
 # Returns: total pending, min ID, max ID, consumers with pending count
 
 # Detailed pending info
-XPENDING stt_jobs najim_workers - + 10
+XPENDING stt_jobs hakeem_workers - + 10
 # Returns: message ID, consumer, idle time (ms), delivery count
 ```
 
@@ -1283,10 +1283,10 @@ If a consumer crashed with pending messages:
 
 ```bash
 # See what's pending
-XPENDING stt_jobs najim_workers - + 10
+XPENDING stt_jobs hakeem_workers - + 10
 
 # Claim pending messages for yourself
-XCLAIM stt_jobs najim_workers worker-node-2-stt 5000 1700000000001-0
+XCLAIM stt_jobs hakeem_workers worker-node-2-stt 5000 1700000000001-0
 # 5000 = min idle time (ms) before you can claim it
 # This transfers ownership from crashed consumer to you
 ```
@@ -1331,10 +1331,10 @@ Our implementation handles this automatically: after each failed attempt, we sle
 
 | Stream | Consumer Group | What Happens |
 |--------|---------------|--------------|
-| `stt_jobs` | `najim_workers` | Audio → Text |
-| `llm_jobs` | `najim_workers` | Text → Response (may call tools) |
-| `tts_jobs` | `najim_workers` | Response → Audio |
-| `responses` | `najim_workers` | Audio → WebSocket send |
+| `stt_jobs` | `hakeem_workers` | Audio → Text |
+| `llm_jobs` | `hakeem_workers` | Text → Response (may call tools) |
+| `tts_jobs` | `hakeem_workers` | Response → Audio |
+| `responses` | `hakeem_workers` | Audio → WebSocket send |
 
 All use the same group name because they're independent streams (not competing for same messages).
 
@@ -1557,7 +1557,7 @@ Let's trace a single voice request from beginning to end. Phone A says "What's t
 
 ### What If a Remote Tool Was Needed?
 
-Change step 12: instead of running `get_weather` locally, it would call `call_client_tool()` which generates a correlation ID, publishes to `najim:ws_send:node-X`, and waits for the phone's response.
+Change step 12: instead of running `get_weather` locally, it would call `call_client_tool()` which generates a correlation ID, publishes to `hakeem:ws_send:node-X`, and waits for the phone's response.
 
 ---
 
@@ -1652,8 +1652,8 @@ stt_jobs                     Stream   Pipeline checkpoint: audio → STT
 llm_jobs                     Stream   Pipeline checkpoint: transcript → LLM
 tts_jobs                     Stream   Pipeline checkpoint: text → TTS
 responses                    Stream   Pipeline checkpoint: audio → WS
-najim:events                 Channel  Cluster-wide pub/sub
-najim:ws_send:{node_id}      Channel  Node-specific message relay
+hakeem:events                 Channel  Cluster-wide pub/sub
+hakeem:ws_send:{node_id}      Channel  Node-specific message relay
 ```
 
 ---
@@ -2227,7 +2227,7 @@ jwt:
 cluster:
   node_id: "node-1"
   node_role: "worker"
-  pubsub_channel: "najim:events"
+  pubsub_channel: "hakeem:events"
 
 # ─────────────────────────────────────────────────
 # AUTH

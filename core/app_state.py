@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import glob
-import os
 from pathlib import Path
 from typing import Optional
 from faster_whisper import WhisperModel

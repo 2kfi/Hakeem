@@ -1,11 +1,11 @@
-# Najim Backend — Overview
+# Hakeem Backend — Overview
 
 > A voice assistant backend designed for a cluster of Intel Atom computers.  
 > Android App → STT → LLM → Tool Calls → TTS. All state in Redis.
 
 ## One Sentence
 
-Najim is a voice assistant backend where an Android app connects via WebSocket, sends audio, the backend runs Speech-to-Text → LLM → Tool Calls → Text-to-Speech, and streams audio back — using **Redis** as the shared brain so any cluster node can handle any request.
+Hakeem is a voice assistant backend where an Android app connects via WebSocket, sends audio, the backend runs Speech-to-Text → LLM → Tool Calls → Text-to-Speech, and streams audio back — using **Redis** as the shared brain so any cluster node can handle any request.
 
 ## System Diagram
 

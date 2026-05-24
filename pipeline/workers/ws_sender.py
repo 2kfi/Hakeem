@@ -20,7 +20,10 @@ async def response_handler(data: dict) -> None:
 
     audio = data.get("audio", "")
     text = data.get("text", "")
+    text_only = data.get("text_only", "false") == "true"
     msg = {"type": "audio_chunk", "audio_data": audio, "text": text}
+    if text_only:
+        msg["text_only"] = True
     try:
         await asyncio.wait_for(ws.send_json(msg), timeout=WS_SEND_TIMEOUT)
         logger.info(f"Sent response to {device_id}")

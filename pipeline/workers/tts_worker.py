@@ -1,8 +1,8 @@
 import asyncio
 import base64
+import json
 import logging
 
-from core.app_state import get_app_state
 from core.config import get_settings
 from core.redis_manager import RedisManager
 from pipeline.tts_queue import TTSQueue
@@ -31,6 +31,13 @@ async def tts_handler(data: dict) -> dict:
     if not response_text:
         logger.warning(f"TTS [{device_id}]: empty response text, skipping synthesis")
         return {"device_id": device_id, "session_id": session_id, "audio": "", "text": ""}
+
+    skip_tts = data.get("skip_tts", False)
+    if isinstance(skip_tts, str):
+        skip_tts = skip_tts.lower() in ("true", "1", "yes")
+    if skip_tts:
+        logger.info(f"TTS [{device_id}]: skip_tts=true, returning text-only response")
+        return {"device_id": device_id, "session_id": session_id, "audio": "", "text": response_text, "text_only": "true"}
 
     logger.info(f"TTS [{device_id}]: synthesizing {len(response_text)} chars for language={language}")
     audio_b64 = await tts.synthesize_and_b64(response_text, language=language)

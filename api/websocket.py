@@ -15,6 +15,7 @@ from core.schemas import DeviceInfo, DeviceStatus, WSMessage, WSMessageType
 from sessions.device_registry import DeviceRegistry
 from tools.registry import get_tool_registry
 from tools.registry import ToolDefinition
+from tools.call_client_tool import get_tool_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ async def _cleanup_lock(device_id: str) -> None:
 
 async def _start_ws_listener(node_id: str, redis: RedisManager) -> None:
     pubsub = redis.client.pubsub()
-    channel = f"najim:ws_send:{node_id}"
+    channel = f"hakeem:ws_send:{node_id}"
     await pubsub.subscribe(channel)
     try:
         async for msg in pubsub.listen():
@@ -163,7 +164,6 @@ async def ws_connect(websocket: WebSocket, token: Optional[str] = Query(None)):
                 correlation_id = data.get("correlation_id")
                 result = data.get("result")
                 error = data.get("error")
-                from tools.call_client_tool import get_tool_bridge
                 bridge = await get_tool_bridge()
                 await bridge.handle_response(correlation_id, result, error)
 
@@ -177,6 +177,20 @@ async def ws_connect(websocket: WebSocket, token: Optional[str] = Query(None)):
                 tools_list = data.get("tools", [])
                 await _register_phone_tools(device_id, [], tools_list)
                 await websocket.send_json({"type": "tools_updated", "count": len(tools_list)})
+
+            elif msg_type == "text":
+                user_text = data.get("text", "")
+                if not user_text:
+                    await websocket.send_json({"type": "error", "message": "Missing text"})
+                    continue
+                await redis.xadd(settings.pipeline.llm_stream, {
+                    "device_id": device_id,
+                    "session_id": device_id,
+                    "text": user_text,
+                    "language": data.get("language", ""),
+                    "skip_tts": data.get("skip_tts", False),
+                }, maxlen=1000)
+                await websocket.send_json({"type": "accepted", "message": "Text processing started"})
 
             else:
                 await websocket.send_json({"type": "error", "message": f"Unknown type: {msg_type}"})
@@ -192,8 +206,8 @@ async def ws_connect(websocket: WebSocket, token: Optional[str] = Query(None)):
         try:
             if websocket.client_state == WebSocketState.CONNECTED:
                 await websocket.close(code=1000, reason="Connection closed")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"WS close error for {device_id}: {e}")
         await device_registry.set_status(device_id, DeviceStatus.OFFLINE)
         await device_registry.unregister(device_id)
 
@@ -235,18 +249,7 @@ async def _handle_audio(websocket: WebSocket, device_id: str, data: dict, redis:
     })
 
 
-async def send_to_device(device_id: str, message: dict) -> bool:
-    ws = _active_connections.get(device_id)
-    if ws and ws.client_state == WebSocketState.CONNECTED:
-        await ws.send_json(message)
-        return True
-    return False
-
-
 def get_active_connection(device_id: str) -> Optional[WebSocket]:
     return _active_connections.get(device_id)
 
 
-def is_device_connected(device_id: str) -> bool:
-    ws = _active_connections.get(device_id)
-    return ws is not None and ws.client_state == WebSocketState.CONNECTED

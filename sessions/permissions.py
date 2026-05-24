@@ -34,8 +34,7 @@ class PermissionStore:
         return out
 
     async def set_all(self, device_id: str, permissions: dict[str, str]) -> None:
-        flat = {k: v for k, v in permissions.items()}
-        await self.redis.client.hset(self._key(device_id), mapping=flat)
+        await self.redis.client.hset(self._key(device_id), mapping=permissions)
 
     async def clear(self, device_id: str) -> None:
         await self.redis.delete(self._key(device_id))

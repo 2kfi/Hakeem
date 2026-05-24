@@ -82,12 +82,12 @@ When the LLM calls a remote tool, the Tool Router:
 1. Checks permissions (`perms:{device_id}` hash)
 2. Generates a unique correlation ID (UUID)
 3. Stores the pending call in Redis (`tool_corr:{id}` with TTL 35s)
-4. Publishes to the pub/sub channel for the phone's connected node (`najim:ws_send:{node_id}`)
+4. Publishes to the pub/sub channel for the phone's connected node (`hakeem:ws_send:{node_id}`)
 5. Uses `BLPOP tool_resp:{id}` to wait for the phone's response (timeout: 30s)
 6. Returns the result to the LLM
 
 ```
-LLM → Router → [tool_corr:{id}] → PUBLISH najim:ws_send:node-2 → Phone (on node-2)
+LLM → Router → [tool_corr:{id}] → PUBLISH hakeem:ws_send:node-2 → Phone (on node-2)
                                                                       ↓
 LLM ← result ← BLPOP tool_resp:{id} ←────── PUBLISH tool_resp:{id} ← Phone
 ```

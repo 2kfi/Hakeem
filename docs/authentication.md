@@ -26,8 +26,8 @@ Default: 24 hours (`jwt.expiry_minutes: 1440`). After expiry, the phone must get
 
 ```bash
 # Option 1 — admin JWT from docker-entrypoint (DEBUG=true):
-docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET najim
-# → [najim] Admin JWT: eyJhbGciOi...
+docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET hakeem
+# → [hakeem] Admin JWT: eyJhbGciOi...
 
 # Option 2 — generate with Python:
 python3 -c "

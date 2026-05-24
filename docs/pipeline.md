@@ -90,7 +90,7 @@ class BaseWorker:
                         ...
 ```
 
-- **Consumer group**: `najim-workers` (same across all nodes)
+- **Consumer group**: `hakeem-workers` (same across all nodes)
 - **Consumer name**: `{node_id}-{stage}` (e.g., `node-1-stt`)
 - **Retry**: 3 attempts, exponential backoff (1s → 3s → 9s)
 - **Ack**: Only on success. Unacked messages are picked up by another node after timeout.
@@ -115,7 +115,7 @@ pipeline:
   llm_stream: "llm_jobs"
   tts_stream: "tts_jobs"
   response_stream: "responses"
-  consumer_group: "najim_workers"
+  consumer_group: "hakeem_workers"
   stt_max_retries: 3
   llm_max_retries: 2
   tts_max_retries: 3

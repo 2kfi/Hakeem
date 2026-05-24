@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from core.config import get_settings
@@ -39,7 +39,7 @@ class ToolBridge:
             timeout = self._settings.tool.remote_timeout
 
         correlation_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         record = ToolCallRecord(
             correlation_id=correlation_id,
@@ -63,7 +63,7 @@ class ToolBridge:
         if not phone_node:
             logger.warning(f"Device {device_id} not found in registry")
             phone_node = self._settings.cluster.node_id
-        pub_channel = f"najim:ws_send:{phone_node}"
+        pub_channel = f"hakeem:ws_send:{phone_node}"
         ws_message = {
             "type": "tool_request",
             "correlation_id": correlation_id,

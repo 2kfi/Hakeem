@@ -26,6 +26,7 @@ from api.websocket import router as ws_router, _start_ws_listener, _active_conne
 from api.sessions import router as sessions_router
 from api.health import router as health_router
 from pipeline.orchestrator import WorkerManager
+from scripts.mcp import MCPWrapper, openapi_spec_to_tools
 
 logger = logging.getLogger("najim")
 
@@ -58,11 +59,48 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_start_ws_listener(settings.cluster.node_id, redis))
 
+    # ── External MCP servers ──────────────────────────────────────────
+    # Connect to configured MCP servers and register their tools in the
+    # ToolRegistry so the pipeline LLM can call them.
+    if settings.mcp.servers:
+        mcp_wrapper = MCPWrapper(
+            llama_base_url=settings.llm.api_base_url,
+            llama_model=settings.llm.model,
+            mcp_servers=settings.mcp.servers,
+            api_key=settings.llm.api_key,
+            timeout=settings.llm.timeout,
+            max_tool_loops=settings.mcp.max_tool_loops,
+            max_retries=settings.mcp.max_retries,
+        )
+        try:
+            await mcp_wrapper.initialize_servers()
+            n = await mcp_wrapper.register_all_in_registry()
+            logger.info("Registered %d external MCP tools in ToolRegistry", n)
+        except Exception as e:
+            logger.error("Failed to initialize MCP servers: %s", e)
+        app.state.mcp_wrapper = mcp_wrapper
+
+    # ── OpenAPI → MCP tools ────────────────────────────────────────────
+    # Load OpenAPI specs and register each endpoint as an MCP tool.
+    openapi_specs = os.environ.get("MCP_OPENAPI_SPECS", "").strip()
+    if openapi_specs:
+        for spec_path in openapi_specs.split(","):
+            spec_path = spec_path.strip()
+            if not spec_path:
+                continue
+            try:
+                n = await openapi_spec_to_tools(spec_path)
+                logger.info("Registered %d OpenAPI tools from %s", n, spec_path)
+            except Exception as e:
+                logger.error("Failed to load OpenAPI spec %s: %s", spec_path, e)
+
     logger.info("Application initialized successfully")
     yield
 
     logger.info("Shutting down...")
     await worker_mgr.stop_all()
+    if hasattr(app.state, "mcp_wrapper"):
+        await app.state.mcp_wrapper.close()
     await AppState.shutdown()
     await redis.close()
     logger.info("Shutdown complete")

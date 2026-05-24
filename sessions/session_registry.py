@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from core.redis_manager import RedisManager
 from core.schemas import SessionData, SessionConfig
@@ -16,7 +16,7 @@ class SessionRegistry:
         return f"{self.KEY_PREFIX}:{device_id}"
 
     async def create(self, device_id: str, user_id: str, config: Optional[SessionConfig] = None) -> SessionData:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         session = SessionData(
             device_id=device_id,
             user_id=user_id,
@@ -55,7 +55,7 @@ class SessionRegistry:
         return await self.redis.exists(self._key(device_id))
 
     async def touch(self, device_id: str) -> None:
-        await self.redis.hset_json(self._key(device_id), "last_active", datetime.utcnow().isoformat())
+        await self.redis.hset_json(self._key(device_id), "last_active", datetime.now(timezone.utc).isoformat())
         await self.redis.expire(self._key(device_id), self._settings.session.ttl_seconds)
 
     async def update_config(self, device_id: str, config: SessionConfig) -> None:
@@ -77,12 +77,9 @@ class SessionRegistry:
             keys.append(key.decode() if isinstance(key, bytes) else key)
         sessions = []
         for key in keys:
-            device_id = key.replace("session:", "")
+            device_id = key.removeprefix("session:")
             session = await self.get(device_id)
             if session:
                 sessions.append(session)
         return sessions
 
-    async def list_by_user(self, user_id: str) -> list[SessionData]:
-        all_sessions = await self.list_all()
-        return [s for s in all_sessions if s.user_id == user_id]

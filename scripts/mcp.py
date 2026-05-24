@@ -1,19 +1,51 @@
-"""MCP client wrapper for connecting to MCP servers"""
+"""MCP client wrapper for connecting to MCP servers.
+
+Supports connecting to external MCP servers over SSE and HTTP transports,
+and registering their tools in the Hakeem ToolRegistry.
+"""
 
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from contextlib import AsyncExitStack
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+import httpx
+import yaml
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from openai import AsyncOpenAI
 
+from core.schemas import ToolDefinition
+from tools.registry import get_tool_registry
+
 logger = logging.getLogger(__name__)
 
 
+# ── Proxy factory ──────────────────────────────────────────────────────────
+
+
+def _make_mcp_proxy(manager: "MCPSessionManager", tool_name: str) -> Callable[..., Any]:
+    """Create an async handler that proxies calls through an MCPSessionManager."""
+    async def proxy(**kwargs: Any) -> str:
+        result = await manager.call_tool(tool_name, kwargs)
+        return str(result.content)
+    proxy.__name__ = f"mcp_{tool_name}"
+    proxy.__qualname__ = f"mcp_{tool_name}"
+    return proxy
+
+
+# ── MCP server session manager (SSE + HTTP) ───────────────────────────────
+
+
 class MCPSessionManager:
-    """Manages a single MCP server connection with auto-reconnect capability."""
+    """Manages a single MCP server connection with auto-reconnect capability.
+
+    Transport is auto-detected from the URL:
+    - ``sse://`` or any HTTP URL  → SSE transport (HTTP-based, standard MCP)
+    """
 
     def __init__(
         self,
@@ -22,34 +54,32 @@ class MCPSessionManager:
         sse_read_timeout: float = 300.0,
         connect_timeout: float = 30.0,
         tool_timeout: float = 60.0,
+        transport: str = "sse",
     ):
         self.url = url
         self.api_key = api_key or "sk-no-key-required"
         self.sse_read_timeout = sse_read_timeout
         self.connect_timeout = connect_timeout
         self.tool_timeout = tool_timeout
+        self.transport = transport
         self.session: Optional[ClientSession] = None
-        self.exit_stack: Optional[asyncio.AsyncExitStack] = None
+        self.exit_stack: Optional[AsyncExitStack] = None
         self.tools: List[Any] = []
         self.lock = asyncio.Lock()
         self.connected = False
 
     async def connect(self):
-        """Connect to MCP server."""
+        """Connect to MCP server using the configured transport."""
         async with self.lock:
             if self.connected:
                 return
             try:
-                logger.info(f"Connecting to MCP server: {self.url}")
-                transport_ctx = sse_client(
-                    self.url,
-                    timeout=self.connect_timeout,
-                    sse_read_timeout=self.sse_read_timeout
-                )
-                self.exit_stack = asyncio.AsyncExitStack()
-                read, write = await self.exit_stack.enter_async_context(transport_ctx)
-                self.session = ClientSession(read, write)
-                await self.session.initialize()
+                logger.info(f"Connecting to MCP server: {self.url} (transport={self.transport})")
+
+                if self.transport == "sse":
+                    await self._connect_sse()
+                else:
+                    await self._connect_http()
 
                 resp = await self.session.list_tools()
                 self.tools = resp.tools
@@ -59,6 +89,34 @@ class MCPSessionManager:
                 logger.error(f"Failed to connect to {self.url}: {e}", exc_info=True)
                 await self.close()
                 raise
+
+    async def _connect_sse(self):
+        """Connect using SSE transport (HTTP-based, standard MCP)."""
+        transport_ctx = sse_client(
+            self.url,
+            timeout=self.connect_timeout,
+            sse_read_timeout=self.sse_read_timeout,
+        )
+        self.exit_stack = AsyncExitStack()
+        read, write = await self.exit_stack.enter_async_context(transport_ctx)
+        self.session = ClientSession(read, write)
+        await self.session.initialize()
+
+    async def _connect_http(self):
+        """Connect using raw HTTP transport.
+
+        Uses POST to the URL for client→server messages and SSE for
+        server→client streaming responses.
+        """
+        transport_ctx = sse_client(
+            self.url,
+            timeout=self.connect_timeout,
+            sse_read_timeout=self.sse_read_timeout,
+        )
+        self.exit_stack = AsyncExitStack()
+        read, write = await self.exit_stack.enter_async_context(transport_ctx)
+        self.session = ClientSession(read, write)
+        await self.session.initialize()
 
     async def close(self):
         """Close MCP connection."""
@@ -79,9 +137,175 @@ class MCPSessionManager:
             self.session.call_tool(name, arguments=arguments), timeout=self.tool_timeout
         )
 
+    # ── ToolRegistry integration ──────────────────────────────────────────
+
+    async def register_in_registry(self) -> int:
+        """Register this server's tools in the Hakeem ToolRegistry.
+
+        Each tool is prefixed with ``mcp_`` to avoid name collisions.
+        Returns the number of tools registered.
+        """
+        registry = await get_tool_registry()
+        count = 0
+        for tool in self.tools:
+            name = f"mcp_{tool.name}"
+            tdef = ToolDefinition(
+                name=name,
+                description=tool.description or f"MCP tool from {self.url}",
+                input_schema=tool.inputSchema or {"type": "object", "properties": {}},
+                is_internal=False,
+            )
+            handler = _make_mcp_proxy(self, tool.name)
+            await registry.register_mcp_tool(name, tdef, handler)
+            count += 1
+        return count
+
+    async def unregister_from_registry(self) -> int:
+        """Remove this server's tools from the ToolRegistry."""
+        registry = await get_tool_registry()
+        count = 0
+        for tool in self.tools:
+            name = f"mcp_{tool.name}"
+            if await registry.remove_mcp_tool(name):
+                count += 1
+        return count
+
+
+# ── OpenAPI → MCP tools ────────────────────────────────────────────────────
+
+
+async def openapi_spec_to_tools(
+    spec_path: str,
+    prefix: str = "openapi_",
+) -> int:
+    """Parse an OpenAPI 3.x spec and register each endpoint as an MCP tool.
+
+    Supports local file paths and remote URLs. Each endpoint becomes a tool
+    that executes the corresponding HTTP request via ``httpx``.
+
+    Args:
+        spec_path: Path or URL to an OpenAPI 3.x spec (JSON or YAML).
+        prefix: Prefix for tool names (default ``openapi_``).
+
+    Returns:
+        Number of tools registered.
+    """
+    if spec_path.startswith(("http://", "https://")):
+        resp = httpx.get(spec_path, timeout=30)
+        resp.raise_for_status()
+        raw = resp.text
+    else:
+        path = Path(spec_path)
+        if not path.exists():
+            raise FileNotFoundError(f"OpenAPI spec not found: {spec_path}")
+        raw = path.read_text(encoding="utf-8")
+
+    if spec_path.endswith((".yaml", ".yml")) or raw.strip().startswith(("openapi:", "swagger:")):
+        spec = yaml.safe_load(raw)
+    else:
+        spec = json.loads(raw)
+
+    servers = spec.get("servers", [])
+    base_url = servers[0].get("url", "") if servers else ""
+    info = spec.get("info", {})
+    logger.info(
+        "Loading OpenAPI spec: %s v%s (%s)",
+        info.get("title", ""),
+        info.get("version", ""),
+        spec_path,
+    )
+
+    registry = await get_tool_registry()
+    count = 0
+
+    for path, path_item in spec.get("paths", {}).items():
+        for method in ("get", "post", "put", "patch", "delete", "head", "options"):
+            operation = path_item.get(method)
+            if not operation:
+                continue
+
+            operation_id = operation.get("operationId") or f"{method}_{path}".replace("/", "_").replace("{", "").replace("}", "")
+            name = f"{prefix}{operation_id}"
+            description = operation.get("description") or operation.get("summary") or ""
+
+            params = operation.get("parameters", [])
+            path_params = [p for p in params if p.get("in") == "path"]
+            query_params = [p for p in params if p.get("in") == "query"]
+            request_body = operation.get("requestBody")
+
+            properties: dict = {}
+            required: list = []
+            for p in path_params + query_params:
+                ps = p.get("schema", {"type": "string"})
+                properties[p["name"]] = {
+                    "type": ps.get("type", "string"),
+                    "description": p.get("description", ""),
+                }
+                if p.get("required", False):
+                    required.append(p["name"])
+            if request_body:
+                for mt, body in request_body.get("content", {}).items():
+                    bs = body.get("schema", {})
+                    if bs.get("type") == "object":
+                        for fn, fs in bs.get("properties", {}).items():
+                            if fn not in properties:
+                                properties[fn] = fs
+                        for r in bs.get("required", []):
+                            if r not in required:
+                                required.append(r)
+
+            tdef = ToolDefinition(
+                name=name,
+                description=description,
+                input_schema={"type": "object", "properties": properties, "required": required},
+                is_internal=True,
+            )
+
+            handler = _make_openapi_handler(method, path, base_url)
+            handler.__name__ = name
+            handler.__qualname__ = name
+
+            await registry.register_mcp_tool(name, tdef, handler)
+            count += 1
+
+    logger.info("Registered %d OpenAPI endpoints as MCP tools from %s", count, spec_path)
+    return count
+
+
+def _make_openapi_handler(method: str, path: str, base_url: str) -> Callable[..., Any]:
+    """Create an async handler that executes an OpenAPI endpoint call."""
+    async def handler(**kwargs: Any) -> str:
+        url = base_url.rstrip("/") + "/" + path.lstrip("/")
+        path_params = {k: v for k, v in kwargs.items() if f"{{{k}}}" in path}
+        query_params = {k: v for k, v in kwargs.items() if k not in path_params}
+        body_args = {k: v for k, v in kwargs.items()}
+        for key, val in path_params.items():
+            path = path.replace(f"{{{key}}}", str(val))
+        url = base_url.rstrip("/") + "/" + path.lstrip("/")
+
+        extra: dict = {}
+        if method in ("post", "put", "patch"):
+            extra["json"] = body_args
+        elif query_params:
+            extra["params"] = query_params
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.request(method, url, **extra)
+            resp.raise_for_status()
+            return resp.text
+    return handler
+
+
+# ── Multi-server orchestrator ──────────────────────────────────────────────
+
 
 class MCPWrapper:
-    """Wrapper for multiple MCP servers with LLM integration."""
+    """Orchestrates multiple MCP server connections with LLM integration.
+
+    This is the legacy orchestrator that runs its own LLM loop. For new
+    code, use ``MCPSessionManager.register_in_registry()`` directly to
+    register tools in the Hakeem ToolRegistry.
+    """
 
     def __init__(
         self,
@@ -278,6 +502,25 @@ class MCPWrapper:
         final_msg = messages[-1]
         return final_msg.get("content", "") if isinstance(final_msg, dict) else ""
 
+    async def register_all_in_registry(self) -> int:
+        """Register all discovered MCP server tools in the Hakeem ToolRegistry."""
+        total = 0
+        for mgr in self.mcp_managers:
+            if mgr.connected:
+                count = await mgr.register_in_registry()
+                total += count
+                logger.info("Registered %d tools from %s in ToolRegistry", count, mgr.url)
+        return total
+
+    async def unregister_all_from_registry(self) -> int:
+        """Remove all MCP server tools from the ToolRegistry."""
+        total = 0
+        for mgr in self.mcp_managers:
+            count = await mgr.unregister_from_registry()
+            total += count
+        return total
+
     async def close(self):
         """Close all MCP connections."""
+        await self.unregister_all_from_registry()
         await asyncio.gather(*(mgr.close() for mgr in self.mcp_managers))

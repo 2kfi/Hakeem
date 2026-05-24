@@ -1,1 +1,0 @@
-from pipeline.workers.base import BaseWorker

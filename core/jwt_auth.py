@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from fastapi import HTTPException, Query, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
@@ -37,7 +37,7 @@ class JWTManager:
         return self._settings.jwt.expiry_minutes
 
     def create_token(self, user_id: str, device_id: str, permissions: list[str] = None) -> str:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         payload = {
             "user_id": user_id,
             "device_id": device_id,
@@ -73,9 +73,6 @@ def get_jwt_manager() -> JWTManager:
     if _jwt_manager is None:
         _jwt_manager = JWTManager()
     return _jwt_manager
-
-
-security = HTTPBearer(auto_error=False)
 
 
 async def verify_jwt(credentials: Optional[HTTPAuthorizationCredentials] = None, token: Optional[str] = Query(None)) -> dict[str, Any]:

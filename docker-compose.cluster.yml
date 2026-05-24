@@ -1,5 +1,5 @@
 # =============================================================================
-# Najim Backend — 3-Node Cluster + Redis
+# Hakeem Backend — 3-Node Cluster + Redis
 # =============================================================================
 # Simulates the 3-node Intel Atom cluster on a single machine.
 # All nodes share the same Redis. Each has a unique CLUSTER_NODE_ID.
@@ -17,29 +17,29 @@ version: "3.8"
 services:
   redis:
     image: redis:7-alpine
-    container_name: najim-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-najim_pass} --save 60 100
+    container_name: hakeem-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-hakeem_pass} --save 60 100
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-najim_pass}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-hakeem_pass}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 3
     restart: unless-stopped
     networks:
-      - najim-cluster
+      - hakeem-cluster
 
-  najim-node-1:
+  hakeem-node-1:
     build: .
-    image: najim-backend:latest
-    container_name: najim-node-1
+    image: hakeem-backend:latest
+    container_name: hakeem-node-1
     ports:
       - "${PORT_1:-8081}:8080"
     environment:
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-najim_pass}@redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-hakeem_pass}@redis:6379/0"
       JWT_SECRET: "${JWT_SECRET}"
       LLM_API_KEY: "${LLM_API_KEY}"
       LLM_MODEL: "${LLM_MODEL:-llama-3.3-70b-versatile}"
@@ -58,16 +58,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - najim-cluster
+      - hakeem-cluster
 
-  najim-node-2:
+  hakeem-node-2:
     build: .
-    image: najim-backend:latest
-    container_name: najim-node-2
+    image: hakeem-backend:latest
+    container_name: hakeem-node-2
     ports:
       - "${PORT_2:-8082}:8080"
     environment:
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-najim_pass}@redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-hakeem_pass}@redis:6379/0"
       JWT_SECRET: "${JWT_SECRET}"
       LLM_API_KEY: "${LLM_API_KEY}"
       LLM_MODEL: "${LLM_MODEL:-llama-3.3-70b-versatile}"
@@ -86,16 +86,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - najim-cluster
+      - hakeem-cluster
 
-  najim-node-3:
+  hakeem-node-3:
     build: .
-    image: najim-backend:latest
-    container_name: najim-node-3
+    image: hakeem-backend:latest
+    container_name: hakeem-node-3
     ports:
       - "${PORT_3:-8083}:8080"
     environment:
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-najim_pass}@redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-hakeem_pass}@redis:6379/0"
       JWT_SECRET: "${JWT_SECRET}"
       LLM_API_KEY: "${LLM_API_KEY}"
       LLM_MODEL: "${LLM_MODEL:-llama-3.3-70b-versatile}"
@@ -114,11 +114,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - najim-cluster
+      - hakeem-cluster
 
 volumes:
   redis-data:
 
 networks:
-  najim-cluster:
+  hakeem-cluster:
     driver: bridge

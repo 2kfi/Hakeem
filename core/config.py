@@ -99,6 +99,8 @@ class SessionSettings(BaseSettings):
     ttl_seconds: int = 86400
     max_history: int = 100
     heartbeat_interval: int = 30
+    summarize_after: int = 10
+    summarize_keep_last: int = 5
 
 
 class ToolSettings(BaseSettings):

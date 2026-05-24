@@ -57,18 +57,18 @@ Nodes talk to each other via Redis Pub/Sub:
 
 | Channel | Who Publishes | Who Subscribes | Purpose |
 |---------|--------------|----------------|---------|
-| `najim:events` | Any node | All nodes | Cluster-wide announcements |
-| `najim:ws_send:{node_id}` | Any node | Only that node | Send WS message to device on that node |
+| `hakeem:events` | Any node | All nodes | Cluster-wide announcements |
+| `hakeem:ws_send:{node_id}` | Any node | Only that node | Send WS message to device on that node |
 
 **Example**: Node-1 needs to send a tool request to a phone connected to Node-2:
 
 ```python
 # Node-1
 phone_node = await device_registry.get_node_for_device("phone-android-123")
-channel = f"najim:ws_send:{phone_node}"
+channel = f"hakeem:ws_send:{phone_node}"
 await redis.publish(channel, {"type": "tool_request", ...})
 
-# Node-2 (listening on najim:ws_send:node-2)
+# Node-2 (listening on hakeem:ws_send:node-2)
 # Receives message, finds WebSocket for device, sends to phone
 ```
 
@@ -95,7 +95,7 @@ Each node:
 2. Connects to Redis (verify with PING)
 3. Loads ML models (Whisper, Piper)
 4. Initializes LLM HTTP client
-5. Subscribes to `najim:ws_send:{node_id}` (other nodes can now route messages through this node)
+5. Subscribes to `hakeem:ws_send:{node_id}` (other nodes can now route messages through this node)
 6. Starts 4 pipeline workers (STT, LLM, TTS, WS Sender) as asyncio tasks
 7. Starts serving WebSocket + REST endpoints
 

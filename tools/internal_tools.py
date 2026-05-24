@@ -1,6 +1,8 @@
 import asyncio
+import ast
 import logging
-from datetime import datetime
+import operator
+from datetime import datetime, timezone
 from typing import Any
 
 from core.schemas import ToolCallResult
@@ -30,7 +32,7 @@ async def run_internal_tool(tool_name: str, params: dict[str, Any], timeout: flo
 
 async def _get_time(params: dict[str, Any]) -> dict[str, Any]:
     await asyncio.sleep(0.01)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     return {
         "time": now.strftime("%H:%M:%S"),
         "date": now.strftime("%Y-%m-%d"),
@@ -52,14 +54,43 @@ async def _get_weather(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Pow: operator.pow,
+    ast.Mod: operator.mod,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def _safe_eval(expr: str) -> float | int:
+    node = ast.parse(expr.strip(), mode="eval")
+    return _eval_node(node.body)
+
+
+def _eval_node(node: ast.AST) -> float | int:
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)):
+            return node.value
+        raise ValueError(f"Unsupported constant: {type(node.value).__name__}")
+    if isinstance(node, ast.UnaryOp):
+        op = _SAFE_OPS.get(type(node.op))
+        if op is None:
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        return op(_eval_node(node.operand))
+    if isinstance(node, ast.BinOp):
+        op = _SAFE_OPS.get(type(node.op))
+        if op is None:
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        return op(_eval_node(node.left), _eval_node(node.right))
+    raise ValueError(f"Unsupported expression: {type(node).__name__}")
+
+
 async def _calculator(params: dict[str, Any]) -> dict[str, Any]:
     expression = params.get("expression", "0")
-    allowed_chars = set("0123456789+-*/.() ")
-    if not all(c in allowed_chars for c in expression):
-        raise ValueError("Invalid characters in expression")
-    result = eval(expression)
-    return {"expression": expression, "result": result, "type": typeof(result)}
-
-
-def typeof(v):
-    return type(v).__name__
+    result = _safe_eval(expression)
+    return {"expression": expression, "result": result, "type": type(result).__name__}

@@ -52,7 +52,6 @@ async def stt_handler(data: dict) -> dict:
 
 
 async def process_stt_jobs(redis: RedisManager, consumer: str):
-    import asyncio
     from pipeline.workers.base import BaseWorker
 
     settings = get_settings()

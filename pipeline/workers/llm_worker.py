@@ -5,13 +5,13 @@ import logging
 from core.config import get_settings
 from core.redis_manager import RedisManager
 from pipeline.llm_runner import LLMRunner
+from sessions.conversation_store import ConversationStore
 
 logger = logging.getLogger(__name__)
 
 
 async def llm_handler(data: dict) -> dict:
     redis = await RedisManager.get_instance()
-    from sessions.conversation_store import ConversationStore
     conv_store = ConversationStore(redis)
 
     device_id = data.get("device_id", "")
@@ -35,6 +35,7 @@ async def llm_handler(data: dict) -> dict:
         "input_text": text,
         "response": response,
         "language": language,
+        "skip_tts": data.get("skip_tts", "false"),
     }
 
 

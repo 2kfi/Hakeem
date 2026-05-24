@@ -1,5 +1,4 @@
-import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -49,14 +48,14 @@ class Message(BaseModel):
     content: str
     tool_call_id: Optional[str] = None
     tool_name: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class SessionData(BaseModel):
     device_id: str
     user_id: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_active: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_active: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     config: SessionConfig = Field(default_factory=SessionConfig)
     status: str = "active"
     language: Optional[str] = None
@@ -81,7 +80,7 @@ class WSMessage(BaseModel):
     device_id: Optional[str] = None
     correlation_id: Optional[str] = None
     payload: Optional[dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AudioJob(BaseModel):
@@ -101,8 +100,8 @@ class DeviceInfo(BaseModel):
     port: Optional[int] = None
     capabilities: list[str] = Field(default_factory=list)
     status: DeviceStatus = DeviceStatus.ONLINE
-    connected_at: datetime = Field(default_factory=datetime.utcnow)
-    last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
+    connected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_heartbeat: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     node_id: Optional[str] = None
 
 
@@ -112,7 +111,7 @@ class ToolCallRecord(BaseModel):
     params: dict[str, Any]
     device_id: str
     session_id: str
-    initiated_at: datetime = Field(default_factory=datetime.utcnow)
+    initiated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "pending"
     result: Optional[Any] = None
     error: Optional[str] = None
@@ -124,7 +123,7 @@ class PipelineEvent(BaseModel):
     device_id: str
     session_id: str
     data: dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source_node: Optional[str] = None
 
 

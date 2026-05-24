@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 import redis.asyncio as redis
@@ -7,6 +8,8 @@ from redis.asyncio.client import Redis
 from redis.asyncio.connection import ConnectionPool, SSLConnection
 
 from core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class RedisManager:
@@ -67,7 +70,8 @@ class RedisManager:
         try:
             await self._client.ping()
             return True
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Redis ping failed: {e}")
             return False
 
     async def hset_json(self, key: str, field: str, value: Any) -> None:
@@ -75,7 +79,18 @@ class RedisManager:
 
     async def hget_json(self, key: str, field: str) -> Any:
         raw = await self._client.hget(key, field)
-        return json.loads(raw) if raw else None
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw_str = raw.decode()
+        elif isinstance(raw, str):
+            raw_str = raw
+        else:
+            raw_str = str(raw)
+        try:
+            return json.loads(raw_str)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return raw_str
 
     async def hset_dict(self, key: str, data: dict[str, Any]) -> None:
         flat = {}
@@ -132,10 +147,6 @@ class RedisManager:
     async def exists(self, key: str) -> bool:
         return bool(await self._client.exists(key))
 
-    async def lpush(self, key: str, *values: Any) -> int:
-        encoded = [json.dumps(v) if not isinstance(v, str) else v for v in values]
-        return await self._client.lpush(key, *encoded)
-
     async def rpush(self, key: str, *values: Any) -> int:
         encoded = [json.dumps(v) if not isinstance(v, str) else v for v in values]
         return await self._client.rpush(key, *encoded)
@@ -161,11 +172,15 @@ class RedisManager:
         raw = await self._client.zrange(key, start, end, withscores=withscores)
         def _decode(x):
             if isinstance(x, bytes):
-                try:
-                    return json.loads(x.decode())
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    return x.decode()
-            return x
+                s = x.decode()
+            elif isinstance(x, str):
+                s = x
+            else:
+                s = str(x)
+            try:
+                return json.loads(s)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return s
         if not withscores:
             return [_decode(x) for x in raw]
         return [(_decode(k), s) for k, s in raw]
@@ -223,9 +238,6 @@ class RedisManager:
 
     async def expire(self, key: str, ttl: int) -> None:
         await self._client.expire(key, ttl)
-
-    async def incr(self, key: str) -> int:
-        return await self._client.incr(key)
 
     async def xgroup_create(self, stream: str, group: str, id: str = "$", mkstream: bool = True) -> None:
         try:

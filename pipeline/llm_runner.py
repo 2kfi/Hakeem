@@ -6,9 +6,10 @@ from typing import Any, Optional
 from core.app_state import get_app_state
 from core.config import get_settings
 from core.redis_manager import RedisManager
-from core.schemas import MessageRole, ToolCallResult
+from core.schemas import MessageRole
 from sessions.conversation_store import ConversationStore
-from tools.router import route_tool_calls_batch, UnknownToolError
+from sessions.conversation_summarizer import ConversationSummarizer
+from tools.router import route_tool_calls_batch
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,15 @@ class LLMRunner:
         if not client:
             raise RuntimeError("LLM client not initialized")
 
-        history = await self.conversation_store.get_history_for_llm(device_id)
+        summarizer = ConversationSummarizer(self.redis, self.conversation_store)
+        summary, recent = await summarizer.get_summarized_history(device_id)
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        messages.extend(history)
+        if summary:
+            messages.append({"role": "system", "content": f"Conversation so far: {summary}"})
+        messages.extend(recent)
         messages.append({"role": "user", "content": user_message})
 
         tools_schema = await self._get_tools_schema()
@@ -52,6 +57,7 @@ class LLMRunner:
                 if iteration == 0:
                     await self.conversation_store.add_message(device_id, MessageRole.USER, user_message)
                 await self.conversation_store.add_message(device_id, MessageRole.ASSISTANT, message.content or "")
+                await summarizer.maybe_summarize(device_id)
                 return message.content or ""
 
             if iteration == 0:
@@ -80,6 +86,7 @@ class LLMRunner:
         )
         text = final_response.choices[0].message.content or ""
         await self.conversation_store.add_message(device_id, MessageRole.ASSISTANT, text)
+        await summarizer.maybe_summarize(device_id)
         return text
 
     async def _get_tools_schema(self) -> Optional[list[dict[str, Any]]]:

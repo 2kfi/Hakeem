@@ -30,6 +30,25 @@ async def route_tool_call(
         logger.info(f"Routing internal tool: {tool_name}")
         return await run_internal_tool(tool_name, params, timeout=settings.tool.internal_timeout)
 
+    elif registry.is_mcp(tool_name):
+        logger.info(f"Routing MCP tool: {tool_name}")
+        handler = registry.get_mcp_handler(tool_name)
+        if handler is None:
+            return ToolCallResult(
+                tool_name=tool_name,
+                success=False,
+                error=f"MCP handler not found for tool: {tool_name}",
+                duration_ms=0,
+            )
+        try:
+            result = await handler(**params)
+            if not isinstance(result, str):
+                result = str(result)
+            return ToolCallResult(tool_name=tool_name, success=True, result=result, duration_ms=0)
+        except Exception as e:
+            logger.exception(f"MCP tool '{tool_name}' execution failed")
+            return ToolCallResult(tool_name=tool_name, success=False, error=str(e), duration_ms=0)
+
     elif registry.is_remote(tool_name):
         from sessions.permissions import PermissionStore
         from core.redis_manager import RedisManager

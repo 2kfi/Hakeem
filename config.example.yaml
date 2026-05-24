@@ -74,11 +74,17 @@ mcp:
   servers: []
 #    - url: "http://10.200.71.180:2527/sse"
 #      api_key: ""
+#    - url: "http://192.168.1.50:8080/sse"
   sse_read_timeout: 300.0
   connect_timeout: 30.0
   tool_timeout: 60.0
   max_retries: 2
   max_tool_loops: 5
+
+# OpenAPI specs to import as MCP tools.
+# Set via env var MCP_OPENAPI_SPECS (comma-separated paths/URLs).
+# Example:
+#   MCP_OPENAPI_SPECS="https://api.example.com/openapi.json"
 
 observability:
   log_level: "INFO"        # DEBUG, INFO, WARNING, ERROR

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from core.config import get_settings
 from core.redis_manager import RedisManager
@@ -18,6 +18,8 @@ class ToolRegistry:
     def __init__(self):
         self._internal: dict[str, ToolDefinition] = {}
         self._remote: dict[str, ToolDefinition] = {}
+        self._mcp: dict[str, ToolDefinition] = {}
+        self._mcp_handlers: dict[str, Callable[..., Any]] = {}
         self._lock = asyncio.Lock()
         self._register_defaults()
 
@@ -67,7 +69,29 @@ class ToolRegistry:
         all_tools = {}
         all_tools.update(self._internal)
         all_tools.update(self._remote)
+        all_tools.update(self._mcp)
         return all_tools
+
+    async def register_mcp_tool(
+        self,
+        name: str,
+        definition: ToolDefinition,
+        handler: Callable[..., Any],
+    ) -> None:
+        async with self._lock:
+            self._mcp[name] = definition
+            self._mcp_handlers[name] = handler
+
+    async def remove_mcp_tool(self, name: str) -> bool:
+        async with self._lock:
+            self._mcp_handlers.pop(name, None)
+            return self._mcp.pop(name, None) is not None
+
+    def get_mcp_handler(self, name: str) -> Callable[..., Any] | None:
+        return self._mcp_handlers.get(name)
+
+    def is_mcp(self, tool_name: str) -> bool:
+        return tool_name in self._mcp
 
     def get_remote_tools(self) -> list[dict[str, Any]]:
         return [t.model_dump() for t in self._remote.values()]

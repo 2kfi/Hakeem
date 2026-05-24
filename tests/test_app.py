@@ -1,13 +1,8 @@
 """
-Unit tests for Najim Backend API
+Unit tests for Hakeem Backend API
 """
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
-import json
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
 
 
 class TestConfigLoading:
@@ -44,17 +39,6 @@ class TestSettings:
         assert settings.max_audio_size_mb == 10
 
 
-class TestHelpers:
-    """Test helper functions"""
-    
-    def test_find_onnx_file(self):
-        """Test ONNX file finder"""
-        from pipeline.tts_queue import TTSQueue
-        from core.redis_manager import RedisManager
-        
-    def test_find_onnx_file_not_found(self):
-        """Test ONNX file finder raises when not found"""
-        pass
 
 
 class TestAppState:
@@ -195,28 +179,3 @@ class TestLogging:
         from app import logger, settings
         
         assert logger is not None
-
-
-class TestFileHelpers:
-    """Test file helper functions"""
-    
-    def test_combine_wav_files_empty(self):
-        """Test combine_wav_files raises on empty input"""
-        pass
-
-
-@pytest.mark.asyncio
-class TestAsyncFunctions:
-    """Test async functions"""
-    
-    async def test_cleanup_files(self):
-        """Test cleanup handles missing files"""
-        pass
-    
-    async def test_synthesize_one_no_voice(self):
-        """Test synthesize_one raises without voice"""
-        pass
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

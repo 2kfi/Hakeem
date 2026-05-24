@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from core.redis_manager import RedisManager
 from core.schemas import DeviceInfo, DeviceStatus
@@ -18,13 +18,13 @@ class DeviceRegistry:
         return f"{self.WS_NODE_PREFIX}:{device_id}"
 
     async def register(self, device_id: str, info: DeviceInfo) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         data = {
             "device_id": device_id,
             "user_id": info.user_id or "",
             "host": info.host or "",
             "port": info.port if info.port else None,
-            "capabilities": info.capabilities if isinstance(info.capabilities, str) else ",".join(info.capabilities),
+            "capabilities": ",".join(info.capabilities),
             "status": info.status.value,
             "connected_at": now.isoformat(),
             "last_heartbeat": now.isoformat(),
@@ -39,44 +39,37 @@ class DeviceRegistry:
         await self.redis.delete(self._ws_key(device_id))
 
     async def get(self, device_id: str) -> Optional[DeviceInfo]:
-        raw = await self.redis.hget_all(self.KEY)
-        if not raw:
+        device_data = await self.redis.hget_json(self.KEY, device_id)
+        if not device_data or not isinstance(device_data, dict):
             return None
-        device_data = raw.get(device_id)
-        if not device_data:
-            return None
-        if isinstance(device_data, dict):
-            return DeviceInfo(
-                device_id=device_data.get("device_id", device_id),
-                user_id=device_data.get("user_id") or None,
-                host=device_data.get("host") or None,
-                port=int(device_data["port"]) if device_data.get("port") else None,
-                capabilities=device_data.get("capabilities", "").split(",") if device_data.get("capabilities") else [],
-                status=DeviceStatus(device_data.get("status", "online")) if device_data.get("status") in ["online", "offline", "busy"] else DeviceStatus.ONLINE,
-                connected_at=datetime.fromisoformat(device_data["connected_at"]) if device_data.get("connected_at") else datetime.utcnow(),
-                last_heartbeat=datetime.fromisoformat(device_data["last_heartbeat"]) if device_data.get("last_heartbeat") else datetime.utcnow(),
-                node_id=device_data.get("node_id"),
-            )
-        return None
+        return DeviceInfo(
+            device_id=device_data.get("device_id", device_id),
+            user_id=device_data.get("user_id") or None,
+            host=device_data.get("host") or None,
+            port=int(device_data["port"]) if device_data.get("port") else None,
+            capabilities=device_data.get("capabilities", "").split(",") if device_data.get("capabilities") else [],
+            status=DeviceStatus(device_data.get("status", "online")) if device_data.get("status") in ["online", "offline", "busy"] else DeviceStatus.ONLINE,
+            connected_at=datetime.fromisoformat(device_data["connected_at"]) if device_data.get("connected_at") else datetime.now(timezone.utc),
+            last_heartbeat=datetime.fromisoformat(device_data["last_heartbeat"]) if device_data.get("last_heartbeat") else datetime.now(timezone.utc),
+            node_id=device_data.get("node_id"),
+        )
 
     async def get_node_for_device(self, device_id: str) -> Optional[str]:
         return await self.redis.get(self._ws_key(device_id))
 
     async def heartbeat(self, device_id: str) -> None:
-        now = datetime.utcnow().isoformat()
-        all_devices = await self.redis.hget_all(self.KEY)
-        if device_id in all_devices:
-            data = all_devices[device_id]
-            if isinstance(data, dict):
-                await self.redis.hset_dict(self.KEY, {device_id: {**data, "last_heartbeat": now}})
+        now = datetime.now(timezone.utc).isoformat()
+        data = await self.redis.hget_json(self.KEY, device_id)
+        if data and isinstance(data, dict):
+            data["last_heartbeat"] = now
+            await self.redis.hset_dict(self.KEY, {device_id: data})
         await self.redis.set_with_ttl(self._ws_key(device_id), self._settings.cluster.node_id, self.WS_NODE_TTL)
 
     async def set_status(self, device_id: str, status: DeviceStatus) -> None:
-        all_devices = await self.redis.hget_all(self.KEY)
-        if device_id in all_devices:
-            data = all_devices[device_id]
-            if isinstance(data, dict):
-                await self.redis.hset_dict(self.KEY, {device_id: {**data, "status": status.value}})
+        data = await self.redis.hget_json(self.KEY, device_id)
+        if data and isinstance(data, dict):
+            data["status"] = status.value
+            await self.redis.hset_dict(self.KEY, {device_id: data})
 
     async def is_online(self, device_id: str) -> bool:
         info = await self.get(device_id)
@@ -95,8 +88,8 @@ class DeviceRegistry:
                     port=int(data["port"]) if data.get("port") else None,
                     capabilities=data.get("capabilities", "").split(",") if data.get("capabilities") else [],
                     status=DeviceStatus(data.get("status", "online")) if data.get("status") in ["online", "offline", "busy"] else DeviceStatus.ONLINE,
-                    connected_at=datetime.fromisoformat(data["connected_at"]) if data.get("connected_at") else datetime.utcnow(),
-                    last_heartbeat=datetime.fromisoformat(data["last_heartbeat"]) if data.get("last_heartbeat") else datetime.utcnow(),
+                    connected_at=datetime.fromisoformat(data["connected_at"]) if data.get("connected_at") else datetime.now(timezone.utc),
+                    last_heartbeat=datetime.fromisoformat(data["last_heartbeat"]) if data.get("last_heartbeat") else datetime.now(timezone.utc),
                     node_id=data.get("node_id"),
                 ))
         return devices

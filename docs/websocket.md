@@ -122,8 +122,8 @@ The final TTS audio output, streamed back to the phone.
 npm install -g wscat
 
 # Get an admin JWT (set DEBUG=true in docker-compose.yml):
-docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET najim
-# → [najim] Admin JWT: eyJhbGciOi...
+docker compose run -e DEBUG=true -e JWT_SECRET=$JWT_SECRET hakeem
+# → [hakeem] Admin JWT: eyJhbGciOi...
 
 # Connect
 wscat -c "ws://localhost:8000/api/v1/connect?token=<ADMIN_JWT>"

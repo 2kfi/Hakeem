@@ -1,4 +1,4 @@
-# Najim Backend
+# Hakeem Backend
 
 Multi-tenant, distributed voice assistant backend for Intel Atom clusters.  
 Android App → STT → LLM → Tool Calls → TTS. All state in Redis.
@@ -44,8 +44,8 @@ No state in local memory. Shared-nothing architecture.
 
 ```bash
 # 1. Clone
-git clone https://github.com/2kfi/najim-backend
-cd najim-backend
+git clone https://github.com/2kfi/hakeem-backend
+cd hakeem-backend
 
 # 2. Set env vars
 cp .env.example .env
@@ -96,7 +96,7 @@ REDIS_URL="redis://:pass@my-redis:6379" docker compose \
 | `REDIS_URL` | — | `redis://:pass@host:6379/0` overrides host/port |
 | `REDIS_HOST` | `localhost` | Redis host (ignored if REDIS_URL set) |
 | `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `najim_pass` | Redis password |
+| `REDIS_PASSWORD` | `hakeem_pass` | Redis password |
 | `REDIS_TLS` | `false` | Enable TLS for Redis |
 
 ### Cluster
@@ -104,7 +104,7 @@ REDIS_URL="redis://:pass@my-redis:6379" docker compose \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTER_NODE_ID` | hostname | Unique node name |
-| `PUBSUB_CHANNEL` | `najim:events` | Redis pub/sub channel |
+| `PUBSUB_CHANNEL` | `hakeem:events` | Redis pub/sub channel |
 
 ### STT (Whisper)
 

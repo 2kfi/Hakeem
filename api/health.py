@@ -1,6 +1,5 @@
 import logging
 import time
-from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
@@ -52,18 +51,18 @@ async def metrics(claims: dict = Depends(verify_jwt)):
     whisper_loaded = state.whisper_model is not None
 
     output = []
-    output.append("# HELP najim_connected_devices Number of connected Android devices")
-    output.append("# TYPE najim_connected_devices gauge")
-    output.append(f"najim_connected_devices {connected}")
-    output.append("# HELP najim_whisper_model_loaded Whisper model load status")
-    output.append("# TYPE najim_whisper_model_loaded gauge")
-    output.append(f"najim_whisper_model_loaded {1 if whisper_loaded else 0}")
-    output.append("# HELP najim_uptime_seconds Node uptime in seconds")
-    output.append("# TYPE najim_uptime_seconds counter")
-    output.append(f"najim_uptime_seconds {time.time() - _start_time:.2f}")
-    output.append("# HELP najim_tts_voices_loaded Number of TTS voices loaded")
-    output.append("# TYPE najim_tts_voices_loaded gauge")
-    output.append(f"najim_tts_voices_loaded {len(state.tts_voice_paths)}")
+    output.append("# HELP hakeem_connected_devices Number of connected Android devices")
+    output.append("# TYPE hakeem_connected_devices gauge")
+    output.append(f"hakeem_connected_devices {connected}")
+    output.append("# HELP hakeem_whisper_model_loaded Whisper model load status")
+    output.append("# TYPE hakeem_whisper_model_loaded gauge")
+    output.append(f"hakeem_whisper_model_loaded {1 if whisper_loaded else 0}")
+    output.append("# HELP hakeem_uptime_seconds Node uptime in seconds")
+    output.append("# TYPE hakeem_uptime_seconds counter")
+    output.append(f"hakeem_uptime_seconds {time.time() - _start_time:.2f}")
+    output.append("# HELP hakeem_tts_voices_loaded Number of TTS voices loaded")
+    output.append("# TYPE hakeem_tts_voices_loaded gauge")
+    output.append(f"hakeem_tts_voices_loaded {len(state.tts_voice_paths)}")
 
     return "\n".join(output)
 

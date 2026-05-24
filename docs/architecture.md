@@ -2,7 +2,7 @@
 
 ## Overview
 
-Najim is a **voice assistant backend** designed for a cluster of 3 Intel Atom computers. An Android app connects via WebSocket, sends audio, and the backend runs a pipeline: **STT → LLM → Tool Calls → TTS**, streaming audio back. All state lives in Redis so any node can handle any request.
+Hakeem is a **voice assistant backend** designed for a cluster of 3 Intel Atom computers. An Android app connects via WebSocket, sends audio, and the backend runs a pipeline: **STT → LLM → Tool Calls → TTS**, streaming audio back. All state lives in Redis so any node can handle any request.
 
 ## Design Tenets
 
@@ -71,7 +71,7 @@ Najim is a **voice assistant backend** designed for a cluster of 3 Intel Atom co
 
 - **registry.py**: `ToolRegistry` — maps tool names to `ToolDefinition`. Two dicts: `_internal` and `_remote`. Register/check/unregister.
 - **internal_tools.py**: `get_time` (UTC), `get_weather` (mock), `calculator` (safe eval). Extensible.
-- **call_client_tool.py**: The cross-node remote tool bridge. `initiate_remote_call` generates a correlation UUID, stores in Redis `tool_corr:{id}`, publishes to `najim:ws_send:{node_id}`. `await_remote_response` uses Redis `BLPOP` on `tool_resp:{id}` to wait for the phone's response (no local futures). `handle_response` pushes the response to the BLPOP-able key.
+- **call_client_tool.py**: The cross-node remote tool bridge. `initiate_remote_call` generates a correlation UUID, stores in Redis `tool_corr:{id}`, publishes to `hakeem:ws_send:{node_id}`. `await_remote_response` uses Redis `BLPOP` on `tool_resp:{id}` to wait for the phone's response (no local futures). `handle_response` pushes the response to the BLPOP-able key.
 - **router.py**: `ToolRouter.route_tool_call(name, device_id)` — checks if internal → runs locally, checks if remote → checks permission → sends via bridge. Raises `UnknownToolError` if not found.
 
 ### `pipeline/` — STT → LLM → TTS

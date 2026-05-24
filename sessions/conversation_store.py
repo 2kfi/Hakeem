@@ -7,6 +7,7 @@ from core.config import get_settings
 
 class ConversationStore:
     KEY_PREFIX = "conv"
+    SUMMARY_KEY_PREFIX = "conv_summary"
 
     def __init__(self, redis: RedisManager):
         self.redis = redis
@@ -14,6 +15,12 @@ class ConversationStore:
 
     def _key(self, device_id: str) -> str:
         return f"{self.KEY_PREFIX}:{device_id}"
+
+    def _summary_key(self, device_id: str) -> str:
+        return f"{self.SUMMARY_KEY_PREFIX}:{device_id}"
+
+    def get_key(self, device_id: str) -> str:
+        return self._key(device_id)
 
     async def add_message(self, device_id: str, role: MessageRole, content: str, tool_call_id: Optional[str] = None, tool_name: Optional[str] = None) -> int:
         msg = Message(role=role, content=content, tool_call_id=tool_call_id, tool_name=tool_name)
@@ -35,7 +42,7 @@ class ConversationStore:
             elif isinstance(item, str):
                 messages.append(Message.model_validate_json(item))
             else:
-                messages.append(Message.model_validate_json(item.decode() if isinstance(item, bytes) else item))
+                messages.append(Message.model_validate_json(item.decode() if isinstance(item, bytes) else str(item)))
         return messages
 
     async def get_history_for_llm(self, device_id: str, limit: int = 50) -> list[dict[str, str]]:
@@ -52,8 +59,16 @@ class ConversationStore:
     async def add_tool_result(self, device_id: str, tool_call_id: str, tool_name: str, result: str) -> int:
         return await self.add_message(device_id, MessageRole.TOOL, result, tool_call_id=tool_call_id, tool_name=tool_name)
 
+    async def get_summary(self, device_id: str) -> Optional[str]:
+        raw = await self.redis.get(self._summary_key(device_id))
+        return raw if isinstance(raw, str) else None
+
+    async def set_summary(self, device_id: str, summary: str) -> None:
+        await self.redis.set_with_ttl(self._summary_key(device_id), summary, self._settings.session.ttl_seconds)
+
     async def clear(self, device_id: str) -> None:
         await self.redis.delete(self._key(device_id))
+        await self.redis.delete(self._summary_key(device_id))
 
     async def count(self, device_id: str) -> int:
         return await self.redis.client.llen(self._key(device_id))
