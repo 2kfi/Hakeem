@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 class AppState:
     whisper_model: Optional[WhisperModel] = None
     tts_voices: dict[str, PiperVoice] = {}
-    tts_voice_paths: dict[str, str] = {}
     llm_client: Optional[AsyncOpenAI] = None
     syn_config: Optional[SynthesisConfig] = None
     initialized: bool = False
@@ -75,8 +74,14 @@ class AppState:
                 continue
             onnx_files = list(voice_dir.glob("*.onnx"))
             if onnx_files:
-                cls.tts_voice_paths[lang] = str(onnx_files[0])
-                logger.info(f"TTS voice registered: {lang} -> {onnx_files[0]}")
+                path = str(onnx_files[0])
+                use_cuda = voice_cfg.get("use_cuda", False)
+                try:
+                    voice = await asyncio.to_thread(lambda: PiperVoice.load(path, use_cuda=use_cuda))
+                    cls.tts_voices[lang] = voice
+                    logger.info(f"TTS voice loaded: {lang} -> {path}")
+                except Exception as e:
+                    logger.error(f"Failed to load TTS voice {lang} from {path}: {e}")
             else:
                 logger.warning(f"No .onnx file found in {voice_dir}")
 
@@ -93,20 +98,11 @@ class AppState:
 
     @classmethod
     def get_tts_voice(cls, language: str) -> Optional[PiperVoice]:
-        if language in cls.tts_voices:
-            return cls.tts_voices[language]
-        path = cls.tts_voice_paths.get(language)
-        if not path:
-            path = cls.tts_voice_paths.get(get_settings().tts.default_voice)
-        if path:
-            if path not in cls.tts_voices:
-                try:
-                    cls.tts_voices[language] = PiperVoice.load(path)
-                except Exception as e:
-                    logger.error(f"Failed to load TTS voice {path}: {e}")
-                    return None
-            return cls.tts_voices.get(language)
-        return None
+        voice = cls.tts_voices.get(language)
+        if voice:
+            return voice
+        default = get_settings().tts.default_voice
+        return cls.tts_voices.get(default)
 
     @classmethod
     def get_llm_client(cls) -> Optional[AsyncOpenAI]:

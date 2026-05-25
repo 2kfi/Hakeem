@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+from typing import Optional
 
 from core.config import get_settings
 from core.redis_manager import RedisManager
@@ -9,7 +10,7 @@ from pipeline.tts_queue import TTSQueue
 
 logger = logging.getLogger(__name__)
 
-_tts_queue: TTSQueue = None
+_tts_queue: Optional[TTSQueue] = None
 
 
 async def get_tts_queue(redis: RedisManager) -> TTSQueue:

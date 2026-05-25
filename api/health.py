@@ -25,7 +25,7 @@ async def health_check():
 
     state = get_app_state()
     whisper_ok = state.whisper_model is not None
-    tts_voices = list(state.tts_voice_paths.keys())
+    tts_voices = list(state.tts_voices.keys())
 
     device_reg = DeviceRegistry(redis)
     connected_devices = await device_reg.count()
@@ -62,7 +62,7 @@ async def metrics(claims: dict = Depends(verify_jwt)):
     output.append(f"hakeem_uptime_seconds {time.time() - _start_time:.2f}")
     output.append("# HELP hakeem_tts_voices_loaded Number of TTS voices loaded")
     output.append("# TYPE hakeem_tts_voices_loaded gauge")
-    output.append(f"hakeem_tts_voices_loaded {len(state.tts_voice_paths)}")
+    output.append(f"hakeem_tts_voices_loaded {len(state.tts_voices)}")
 
     return "\n".join(output)
 

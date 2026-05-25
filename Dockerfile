@@ -41,8 +41,12 @@ COPY sessions/ sessions/
 COPY tools/ tools/
 COPY pipeline/ pipeline/
 COPY api/ api/
+COPY rag/ rag/
 COPY app.py .
 COPY config.yaml .
+
+# ─── Vector store persistence ──────────────────────────────────────────────
+RUN mkdir -p /app/data/vector_store
 
 # ─── Expose ────────────────────────────────────────────────────────────────
 EXPOSE 8080

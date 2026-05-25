@@ -33,3 +33,9 @@ models/TTS-CORI-EN
 models/TTS-KAREEM-ARABIC
 models/whisper-medium
 models/MedGemma
+models/chroma/onnx.tar.gz
+models/chroma/onnx/
+
+# Data
+data/vector_store/
+data/documents/

@@ -200,6 +200,15 @@ def check_and_download_models(config: dict):
     else:
         logger.info(f"✓ STT exists: {stt_path}")
     
+    # Chroma ONNX (RAG embeddings)
+    rag_cfg = config.get("rag", {})
+    chroma_path = rag_cfg.get("model_dir", "models/chroma")
+    if not has_chroma_model(chroma_path):
+        logger.info(f"Chroma ONNX model missing: {chroma_path}")
+        download_chroma_model(chroma_path, rag_config=rag_cfg)
+    else:
+        logger.info(f"✓ Chroma ONNX exists: {chroma_path}/onnx/model.onnx")
+
     # TTS
     tts_configs = config.get("tts", {})
     
@@ -220,6 +229,64 @@ def check_and_download_models(config: dict):
             logger.info(f"✓ TTS [{lang}] downloaded and flattened: {local_path}")
         else:
             logger.error(f"✗ TTS [{lang}] download failed")
+
+
+def has_chroma_model(path: str) -> bool:
+    onnx_path = os.path.join(path, "onnx", "model.onnx")
+    return os.path.exists(onnx_path)
+
+
+def download_chroma_model(local_path: str, rag_config: dict = None) -> bool:
+    import tarfile
+
+    if rag_config is None:
+        rag_config = {}
+
+    hf_repo = rag_config.get("hf_repo", "")
+    hf_filename = rag_config.get("hf_filename", "onnx.tar.gz")
+    download_url = rag_config.get("download_url", "")
+    model_name = rag_config.get("embedding_model", "all-MiniLM-L6-v2")
+
+    os.makedirs(local_path, exist_ok=True)
+    tar_path = os.path.join(local_path, "onnx.tar.gz")
+
+    if hf_repo:
+        logger.info(f"Downloading Chroma ONNX model from HuggingFace: {hf_repo}")
+        try:
+            from huggingface_hub import hf_hub_download
+            downloaded = hf_hub_download(
+                repo_id=hf_repo,
+                filename=hf_filename,
+                local_dir=local_path,
+                local_dir_use_symlinks=False,
+            )
+            if downloaded.endswith(".tar.gz"):
+                tar_path = downloaded
+            else:
+                logger.info(f"✓ Chroma ONNX model ready: {downloaded}")
+                return True
+        except Exception as e:
+            logger.error(f"✗ HuggingFace download failed: {e}")
+            return False
+    else:
+        if not download_url:
+            download_url = f"https://chroma-onnx-models.s3.amazonaws.com/{model_name}/onnx.tar.gz"
+
+        logger.info(f"Downloading Chroma ONNX model from {download_url}")
+        import httpx
+        with httpx.stream("GET", download_url, follow_redirects=True) as resp:
+            resp.raise_for_status()
+            with open(tar_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=8192):
+                    f.write(chunk)
+
+    logger.info(f"Extracting to {local_path}...")
+    with tarfile.open(tar_path) as tar:
+        tar.extractall(path=local_path)
+
+    os.remove(tar_path)
+    logger.info(f"✓ Chroma ONNX model ready: {local_path}/onnx/model.onnx")
+    return True
 
 
 def warn_missing_models(config: dict):
@@ -306,8 +373,11 @@ def main():
                 tts_all_ok = False
                 break
                 
-        if stt_ok and tts_all_ok:
-            logger.info("All models already exist in flat format.")
+        chroma_path = config.get("rag", {}).get("model_dir", "models/chroma")
+        chroma_ok = has_chroma_model(chroma_path)
+
+        if stt_ok and tts_all_ok and chroma_ok:
+            logger.info("All models already exist.")
             logger.info("Use --force to re-download")
             return
     

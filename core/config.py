@@ -73,6 +73,7 @@ class LLMSettings(BaseSettings):
     model: str = "llama-3.3-70b-versatile"
     timeout: float = 60.0
     max_retries: int = 2
+    system_prompt: str = ""
 
 
 class MCPSettings(BaseSettings):
@@ -145,6 +146,27 @@ class AuthSettings(BaseSettings):
     jwt_only: bool = True
 
 
+class RAGSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="RAG_")
+
+    enabled: bool = False
+    chunk_size: int = 512
+    chunk_overlap: int = 64
+    embedding_model: str = "all-MiniLM-L6-v2"
+    model_dir: str = "./models/chroma"
+    vector_store_path: str = "./data/vector_store"
+    top_k: int = 3
+    min_score: float = 0.4
+    auto_index_on_start: bool = True
+    source_directories: list[str] = []
+    download_url: str = ""
+    hf_repo: str = ""
+    hf_filename: str = "onnx.tar.gz"
+    indexing_batch_size: int = 32
+    indexing_delay_ms: int = 100
+    device: str = "auto"
+
+
 class _NestedEnvSource:
     def __init__(self, settings_cls):
         pass
@@ -163,6 +185,7 @@ class _NestedEnvSource:
             "tool": "TOOL_",
             "cluster": "CLUSTER_",
             "auth": "AUTH_",
+            "rag": "RAG_",
         }
         for field_name, prefix in nested_prefixes.items():
             sub: dict[str, Any] = result.setdefault(field_name, {})
@@ -200,6 +223,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
     rate_limit: str = "60/minute"
     max_audio_size_mb: int = 10
+    ws_max_size: int = 10485760
     allowed_audio_types: list[str] = ["audio/wav", "audio/mpeg", "audio/ogg"]
 
     redis: RedisSettings = Field(default_factory=RedisSettings)
@@ -213,6 +237,7 @@ class Settings(BaseSettings):
     cluster: ClusterSettings = Field(default_factory=ClusterSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+    rag: RAGSettings = Field(default_factory=RAGSettings)
 
 
 @lru_cache

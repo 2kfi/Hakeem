@@ -50,7 +50,6 @@ class TestAppState:
         
         assert AppState.whisper_model is None
         assert AppState.tts_voices == {}
-        assert AppState.tts_voice_paths == {}
         assert AppState.llm_client is None
         assert not AppState.initialized
 

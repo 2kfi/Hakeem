@@ -32,12 +32,13 @@ async def run_internal_tool(tool_name: str, params: dict[str, Any], timeout: flo
 
 async def _get_time(params: dict[str, Any]) -> dict[str, Any]:
     await asyncio.sleep(0.01)
+    tz = params.get("tz", "UTC")
     now = datetime.now(timezone.utc)
     return {
         "time": now.strftime("%H:%M:%S"),
         "date": now.strftime("%Y-%m-%d"),
         "iso": now.isoformat(),
-        "timezone": "UTC",
+        "timezone": tz,
     }
 
 

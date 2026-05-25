@@ -165,3 +165,28 @@ class ToolCallResult(BaseModel):
     result: Optional[Any] = None
     error: Optional[str] = None
     duration_ms: int = 0
+
+
+class DocumentResponse(BaseModel):
+    id: str
+    filename: str
+    status: str
+    chunks: int = 0
+    created_at: str = ""
+
+
+class SearchResult(BaseModel):
+    chunk_id: str
+    content: str
+    score: float
+    source_file: str
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchResult]
+
+
+class RAGQuery(BaseModel):
+    query: str
+    top_k: int = 3

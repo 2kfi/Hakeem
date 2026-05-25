@@ -3,6 +3,7 @@ Najim Backend - Multi-Tenant Distributed Voice Assistant
 """
 import asyncio
 import logging
+import logging.handlers
 import json
 import os
 import time
@@ -26,6 +27,7 @@ from api.websocket import router as ws_router, _start_ws_listener, _active_conne
 from api.sessions import router as sessions_router
 from api.health import router as health_router
 from pipeline.orchestrator import WorkerManager
+from rag.engine import init_rag_engine, get_rag_engine
 from scripts.mcp import MCPWrapper, openapi_spec_to_tools
 
 logger = logging.getLogger("najim")
@@ -35,6 +37,15 @@ logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
     format="%(levelname)s: %(name)s: %(message)s",
 )
+
+os.makedirs("logs", exist_ok=True)
+_handler = logging.handlers.RotatingFileHandler(
+    "logs/app.log", maxBytes=10_000_000, backupCount=3
+)
+_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+))
+logging.getLogger().addHandler(_handler)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -46,7 +57,10 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info(f"Starting Najim cluster node: {settings.cluster.node_id}")
 
-    await AppState.initialize()
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 1: Redis
+    # ═══════════════════════════════════════════════════════════════════
+    logger.info("═══════════ Phase 1: Redis ═══════════")
     redis = await get_redis()
 
     if not await redis.ping():
@@ -54,10 +68,36 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Redis connected")
 
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 2: RAG (file change detection)
+    # ═══════════════════════════════════════════════════════════════════
+    logger.info("═══════════ Phase 2: RAG ═══════════")
+    if settings.rag.enabled:
+        engine = await init_rag_engine(settings.rag)
+        if engine and settings.rag.auto_index_on_start:
+            dirs = settings.rag.source_directories
+            if dirs:
+                logger.info(f"RAG: checking {len(dirs)} directories for changes...")
+                n = await engine.index_if_changed(dirs)
+                if n:
+                    logger.info(f"RAG: indexed {n} new/changed chunks")
+        elif not settings.rag.auto_index_on_start:
+            logger.info("RAG: auto-index on start disabled (auto_index_on_start=false)")
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 3: Models (TTS + Whisper + LLM)
+    # ═══════════════════════════════════════════════════════════════════
+    logger.info("═══════════ Phase 3: Models ═══════════")
+    await AppState.initialize()
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Phase 4: Workers
+    # ═══════════════════════════════════════════════════════════════════
+    logger.info("═══════════ Phase 4: Workers ═══════════")
     worker_mgr = WorkerManager(redis)
     await worker_mgr.start_all()
 
-    asyncio.create_task(_start_ws_listener(settings.cluster.node_id, redis))
+    ws_listener_task = asyncio.create_task(_start_ws_listener(settings.cluster.node_id, redis))
 
     # ── External MCP servers ──────────────────────────────────────────
     # Connect to configured MCP servers and register their tools in the
@@ -98,6 +138,11 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    ws_listener_task.cancel()
+    try:
+        await ws_listener_task
+    except asyncio.CancelledError:
+        pass
     await worker_mgr.stop_all()
     if hasattr(app.state, "mcp_wrapper"):
         await app.state.mcp_wrapper.close()
@@ -177,6 +222,7 @@ async def add_request_id(request: Request, call_next):
 app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(health_router)
+# app.include_router(rag_router)  # REST endpoints disabled — context injection via llm_runner only
 
 
 @app.get("/")
@@ -206,4 +252,5 @@ if __name__ == "__main__":
         port=settings.api_port,
         log_level="debug" if settings.debug else "info",
         ws_ping_interval=None,
+        ws_max_size=settings.ws_max_size,
     )

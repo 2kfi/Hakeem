@@ -33,10 +33,11 @@ Android App → STT → LLM → Tool Calls → TTS. All state in Redis.
 
 ```
 WS Receive → [stt_jobs] → STT → [llm_jobs] → LLM → [tts_jobs] → TTS → [responses] → WS Send
-                                            ↗              ↖
-                                     Tool Router      Phone Tools
+                                            ↗    ↗          ↖
+                                     RAG Docs  Tool Router   Phone Tools
 ```
 
+RAG injects relevant documentation context into the LLM before it answers.  
 If a node crashes mid-stage, another node picks up the pending job from the stream.  
 No state in local memory. Shared-nothing architecture.
 
@@ -144,6 +145,17 @@ REDIS_URL="redis://:pass@my-redis:6379" docker compose \
 | `PIPELINE_TTS_RETRIES` | `3` | Max TTS retries |
 | `PIPELINE_POLL_TIMEOUT` | `5000` | Worker poll (ms) |
 
+### RAG (Retrieval-Augmented Generation)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG_ENABLED` | `false` | Enable document search + LLM context |
+| `RAG_CHUNK_SIZE` | `512` | Characters per document chunk |
+| `RAG_MODEL_DIR` | `./models/chroma` | ONNX embedding model path |
+| `RAG_VECTOR_STORE_PATH` | `./data/vector_store` | ChromaDB persistence dir |
+| `RAG_TOP_K` | `3` | Max chunks to inject per query |
+| `RAG_MIN_SCORE` | `0.4` | Minimum similarity threshold |
+
 ### Auth
 
 | Variable | Default | Description |
@@ -197,6 +209,11 @@ ws://host:8080/api/v1/connect?token=<JWT>
 | GET | `/api/v1/devices/{id}` | JWT | Get device info |
 | GET | `/api/v1/permissions/{id}` | JWT | List device permissions |
 | PUT | `/api/v1/permissions/{id}/{tool}` | JWT | Set tool permission |
+| GET | `/api/v1/documents` | JWT | List indexed RAG documents |
+| POST | `/api/v1/documents/upload` | JWT | Upload & index a document |
+| DELETE | `/api/v1/documents/{id}` | JWT | Remove a document from index |
+| GET | `/api/v1/documents/search?q=` | JWT | Search indexed documents |
+| POST | `/api/v1/documents/reindex` | JWT | Re-index all source directories |
 
 ## Generating a JWT
 
@@ -253,20 +270,26 @@ models/
 │   └── config.json
 ├── TTS-CORI-EN/
 │   └── en.en_GB.cori.high.onnx
-└── TTS-KAREEM-ARABIC/
-    └── ar.ar_JO.kareem.medium.onnx
+├── TTS-KAREEM-ARABIC/
+│   └── ar.ar_JO.kareem.medium.onnx
+└── chroma/
+    └── onnx/
+        ├── model.onnx       (90MB — all-MiniLM-L6-v2)
+        ├── tokenizer.json
+        ├── config.json
+        └── vocab.txt
 ```
 
-Download with:
+Download all models:
 ```bash
 python3 scripts/downloader.py
 ```
 
-Or set `MODEL_DOWNLOAD=true` in Docker.
+Or set `MODEL_DOWNLOAD=true` in Docker (downloads STT, TTS, and RAG models).
 
 ## Architecture Details
 
-For a deep dive into how everything works, see [understand.md](understand.md) — covers JWT, Redis data structures, WebSocket lifecycle, tool bridge, correlation IDs, load balancing, crash recovery, and the checkpoint pipeline.
+For a deep dive into how everything works, see [understand.md](understand.md) — covers JWT, Redis data structures, WebSocket lifecycle, tool bridge, correlation IDs, load balancing, crash recovery, checkpoint pipeline, and RAG (document search + LLM context injection).
 
 ## License
 

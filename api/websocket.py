@@ -39,25 +39,31 @@ async def _cleanup_lock(device_id: str) -> None:
 
 
 async def _start_ws_listener(node_id: str, redis: RedisManager) -> None:
-    pubsub = redis.client.pubsub()
     channel = f"hakeem:ws_send:{node_id}"
-    await pubsub.subscribe(channel)
-    try:
-        async for msg in pubsub.listen():
-            if msg["type"] == "message":
-                try:
-                    data = json.loads(msg["data"])
-                    device_id = data.get("device_id")
-                    if device_id and device_id in _active_connections:
-                        ws = _active_connections[device_id]
-                        if ws.client_state == WebSocketState.CONNECTED:
-                            await ws.send_json(data)
-                except json.JSONDecodeError as e:
-                    logger.error(f"WS send error: invalid JSON: {e}")
-                except Exception as e:
-                    logger.error(f"WS send error: {e}")
-    finally:
-        await pubsub.unsubscribe(channel)
+    while True:
+        try:
+            pubsub = redis.client.pubsub()
+            await pubsub.subscribe(channel)
+            logger.info(f"WS listener subscribed to {channel}")
+            async for msg in pubsub.listen():
+                if msg["type"] == "message":
+                    try:
+                        data = json.loads(msg["data"])
+                        device_id = data.get("device_id")
+                        if device_id and device_id in _active_connections:
+                            ws = _active_connections[device_id]
+                            if ws.client_state == WebSocketState.CONNECTED:
+                                await ws.send_json(data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"WS send error: invalid JSON: {e}")
+                    except Exception as e:
+                        logger.error(f"WS send error: {e}")
+        except asyncio.CancelledError:
+            logger.info("WS listener cancelled")
+            return
+        except Exception as e:
+            logger.error(f"WS listener error: {e}, reconnecting in 5s...")
+            await asyncio.sleep(5)
 
 
 async def _register_phone_tools(device_id: str, capabilities: list[str], tools_list: list[dict]):

@@ -27,7 +27,7 @@ class ToolRegistry:
         self._internal["get_time"] = ToolDefinition(
             name="get_time",
             description="Get the current time",
-            input_schema={"type": "object", "properties": {}, "required": []},
+            input_schema={"type": "object", "properties": {"tz": {"type": "string", "description": "Optional timezone (defaults to UTC)"}}, "required": []},
             is_internal=True,
         )
         self._internal["get_weather"] = ToolDefinition(

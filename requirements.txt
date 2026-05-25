@@ -25,3 +25,6 @@ redis[hiredis]
 python-jose[cryptography]
 pytest
 pytest-asyncio
+# RAG / Vector search
+llama-index-core>=0.12
+chromadb>=0.5

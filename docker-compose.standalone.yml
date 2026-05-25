@@ -30,6 +30,11 @@ services:
       PIPELINE_LLM_WORKERS: "${PIPELINE_LLM_WORKERS:-1}"
       PIPELINE_TTS_WORKERS: "${PIPELINE_TTS_WORKERS:-1}"
       PIPELINE_WS_WORKERS: "${PIPELINE_WS_WORKERS:-1}"
+      RAG_ENABLED: "${RAG_ENABLED:-false}"
+      RAG_EMBEDDING_MODEL: "${RAG_EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+      RAG_TOP_K: "${RAG_TOP_K:-3}"
+      RAG_AUTO_INDEX_ON_START: "${RAG_AUTO_INDEX_ON_START:-true}"
     volumes:
       - ./models:/app/models
+      - ./data:/app/data
     restart: unless-stopped

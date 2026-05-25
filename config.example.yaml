@@ -1,93 +1,185 @@
-# Docker Deployment Configuration
-# Volumes are mounted at /app in container
-# Copy to config.yaml when running with Docker
+# Hakeem Backend — Example Configuration
+# Copy to config.yaml and edit for your environment.
+# All values can be overridden via environment variables.
+#   Nested keys use underscores: e.g. REDIS_HOST, JWT_SECRET, LLM_API_KEY, RAG_ENABLED
 
-models:
-  storage_path: "./models"
-  download_on_startup: true
-
+# ─────────────────────────────────────────────────
+# API — server binding and limits
+# ─────────────────────────────────────────────────
 api:
-  host: "0.0.0.0"
-  port: 8080
-  base_path: "/api/v1"
-  max_audio_size_mb: 10
-  allowed_audio_types:
+  host: "0.0.0.0"              # bind address (0.0.0.0 = all interfaces)
+  port: 8080                    # HTTP port
+  debug: false                  # enable debug logging + hot reload
+  cors_origins: ["*"]           # allowed CORS origins (set to your frontend URL in prod)
+  rate_limit: "60/minute"       # max requests per minute per IP
+  max_audio_size_mb: 10         # reject audio uploads larger than this
+  ws_max_size: 10485760         # max websocket message size in bytes (10MB)
+  allowed_audio_types:          # accepted Content-Type values for audio uploads
     - "audio/wav"
     - "audio/mpeg"
     - "audio/ogg"
 
+# ─────────────────────────────────────────────────
+# REDIS — shared state, pub/sub, job queues
+# ─────────────────────────────────────────────────
+redis:
+  url: "redis://:hakeem_pass@redis:6379/0"   # Redis URL (overrides host/port/password if set)
+  tls: false                                  # enable TLS for Redis connection
+  pool_size: 10                               # connection pool size (increase for multi-node)
+
+# ─────────────────────────────────────────────────
+# JWT — authentication tokens
+# ─────────────────────────────────────────────────
+jwt:
+  secret: "change_me_to_a_long_random_secret"   # signing key (use `openssl rand -hex 32`)
+  algorithm: "HS256"                            # signing algorithm
+  expiry_minutes: 1440                          # token TTL (1440 = 24 hours)
+
+# ─────────────────────────────────────────────────
+# CLUSTER — node identity for multi-node deployments
+# ─────────────────────────────────────────────────
+cluster:
+  node_id: "node-1"              # unique per node (defaults to hostname)
+  node_role: "worker"            # not used yet, reserved for future role-based scheduling
+  pubsub_channel: "hakeem:events" # Redis pub/sub channel for cluster-wide events
+
+# ─────────────────────────────────────────────────
+# AUTH — access control
+# ─────────────────────────────────────────────────
 auth:
-  default_rate_limit: 60
-  api_keys:
-    "sk-dev-001":
-      name: dev-client
-      rate_limit: 100
-    "sk-prod-001":
-      name: prod-client
-      rate_limit: 500
+  jwt_only: true                        # true = reject requests without valid JWT
+  api_keys: {}                          # fallback API keys when jwt_only=false
 
-# STT - compatible with Docker volumes
+# ─────────────────────────────────────────────────
+# SESSION — conversation history management
+# ─────────────────────────────────────────────────
+session:
+  ttl_seconds: 86400              # how long session data lives in Redis (86400 = 24h)
+  max_history: 100                # max messages kept per conversation
+  heartbeat_interval: 30          # seconds between client heartbeats
+  summarize_after: 10             # auto-summarize after N user messages (0 = disabled)
+  summarize_keep_last: 5          # keep last N user messages after summarization
+
+# ─────────────────────────────────────────────────
+# TOOL — internal & remote tool call settings
+# ─────────────────────────────────────────────────
+tool:
+  remote_timeout: 30.0            # seconds to wait for a phone-side tool response
+  internal_timeout: 10.0          # seconds to wait for an internal tool (get_time, calculator)
+  max_retries: 2                  # max retries for tool calls
+
+# ─────────────────────────────────────────────────
+# STT (Speech-to-Text / Whisper)
+# ─────────────────────────────────────────────────
 stt:
-  model_path: "models/whisper-medium"
-  hf_repo: "Systran/faster-whisper-medium"
-  device: "auto" # CUDA, ROMc, CPU
-  compute_type: "int8" # int8 OR fp16 OR fp32 OR int8_float16
-  task: "transcribe" # transcribe or translate
-  beam_size: 5
-  vad_filter: true
-  vad_threshold: 0.5
-  vad_min_speech_duration_ms: 250
-  vad_min_silence_duration_ms: 200
+  model_name: "medium"            # Whisper model size (tiny/base/small/medium/large-v3)
+  model_dir: "./models"           # where Whisper model weights are stored
+  hf_repo: "Systran/faster-whisper-medium" # HuggingFace repo for auto-download
+  device: "auto"                  # "auto" / "cpu" / "cuda" / "mps"
+  compute_type: "int8"            # precision (int8_float16 / int8 / float16 / float32)
+  beam_size: 5                    # beam search width (higher = better but slower)
+  vad_filter: true                # skip silent segments before transcription
+  language: null                  # force a language ("en", "ar") or null for auto-detect
 
-# TTS - use local paths
+# ─────────────────────────────────────────────────
+# TTS (Text-to-Speech / Piper)
+# ─────────────────────────────────────────────────
 tts:
-  en:
-    local_path: "models/TTS-CORI-EN"
-    hf_repo: "rhasspy/piper-voices"
-    voice: "en.en_GB.cori.high"
-    use_cuda: false
-  ar:
-    local_path: "./models/TTS-KAREEM-ARABIC"
-    hf_repo: "rhasspy/piper-voices"
-    voice: "ar.ar_JO.kareem.medium"
-    use_cuda: false
+  model_dir: "./models"           # root dir containing voice subdirectories
+  voices:                         # voice profiles per language
+    en:
+      local_path: "TTS-CORI-EN"   # subdirectory under model_dir containing .onnx + .json
+      hf_repo: "rhasspy/piper-voices"
+      voice: "en.en_GB.cori.high"
+      use_cuda: false
+    ar:
+      local_path: "TTS-KAREEM-ARABIC"
+      hf_repo: "rhasspy/piper-voices"
+      voice: "ar.ar_JO.kareem.medium"
+      use_cuda: false
+  default_voice: "en"             # fallback language if none specified
+  max_length: 500                 # max text chars per TTS call (longer text is truncated)
+  synthesis:                      # Piper synthesis parameters
+    volume: 0.75                  # 0.0 - 1.0
+    length_scale: 1.0             # speed (lower = faster)
+    noise_scale: 0.75             # emotional range (higher = more expressive)
+    noise_w_scale: 0.5            # variation
+    normalize_audio: true
+    nchannels: 1                  # 1 = mono
+    sampwidth: 2                  # bytes per sample (2 = 16-bit PCM)
+    framerate: 22050              # sample rate
 
-settings:
-  volume: 0.75          # Increased for clarity without digital clipping
-  length_scale: 1.0     # Keep at 1.0; adjust to 1.1 if the voice feels too rushed
-  noise_scale: 0.75     # Slightly higher than default to reduce robotic "dryness"
-  noise_w_scale: 0.5    # Reduced to 0.5 to stop the voice from sounding "wobbly"
-  normalize_audio: true # Keeps volume consistent across different sentences
-  nchannels: 1
-  sampwidth: 2
-  framerate: 22050      # Most high-quality Piper models are native to 22050Hz
-  use_cuda: false       # Keep false unless you have an NVIDIA GPU
-
-
+# ─────────────────────────────────────────────────
+# LLM (Large Language Model / Groq / OpenAI-compatible)
+# ─────────────────────────────────────────────────
 llm:
-#  api_url: "http://10.200.71.180:2312/v1" # OPEN-AI-API
-#  api_key: "sk-no-key-required"
-  model: "local-model"
-  timeout: 120
+  api_base_url: "https://api.groq.com/openai/v1"  # OpenAI-compatible endpoint
+  api_key: "gsk_your_groq_api_key_here"            # API key
+  model: "llama-3.3-70b-versatile"                 # model name
+  timeout: 60.0                                     # request timeout in seconds
+  max_retries: 2                                    # retries on transient errors
+  system_prompt: |                                  # system prompt sent before every query
+    You are a concise voice assistant.
+    Give short, natural spoken answers.
+    Avoid bold text, markdown lists, bullet points, or long explanations unless asked.
+    Respond in the same language as the user's message.
 
+# ─────────────────────────────────────────────────
+# MCP (Model Context Protocol — external tool servers)
+# ─────────────────────────────────────────────────
 mcp:
-  servers: []
-#    - url: "http://10.200.71.180:2527/sse"
-#      api_key: ""
-#    - url: "http://192.168.1.50:8080/sse"
-  sse_read_timeout: 300.0
-  connect_timeout: 30.0
-  tool_timeout: 60.0
-  max_retries: 2
-  max_tool_loops: 5
+  servers: []                     # list of MCP server URLs or config dicts
+  sse_read_timeout: 300.0         # SSE stream read timeout (seconds)
+  tool_timeout: 30.0              # per-tool execution timeout
+  max_retries: 2                  # retries on tool failure
+  max_tool_loops: 5               # max LLM tool-call iterations before forcing a final answer
 
-# OpenAPI specs to import as MCP tools.
-# Set via env var MCP_OPENAPI_SPECS (comma-separated paths/URLs).
-# Example:
-#   MCP_OPENAPI_SPECS="https://api.example.com/openapi.json"
+# ─────────────────────────────────────────────────
+# RAG (Retrieval-Augmented Generation)
+# Index documents into ChromaDB for LLM context injection.
+# Set enabled: true to turn on. Requires ONNX model at models/chroma/onnx/.
+# ─────────────────────────────────────────────────
+rag:
+  enabled: false                      # master switch
+  chunk_size: 512                     # characters per document chunk
+  chunk_overlap: 64                   # overlap between chunks (helps with topic boundaries)
+  embedding_model: "all-MiniLM-L6-v2" # ONNX embedding model name
+  model_dir: "./models/chroma"        # dir containing onnx/ subdirectory
+  vector_store_path: "./data/vector_store"  # ChromaDB persistence path
+  top_k: 3                           # top-K chunks to retrieve per query
+  min_score: 0.4                      # minimum cosine similarity threshold (0.0 - 1.0)
+  auto_index_on_start: true           # run file change detection on startup
+  source_directories:                 # which directories to scan for documents
+    - "./docs"
+  download_url: ""                    # custom S3 download URL (empty = use embedding_model name)
+  hf_repo: ""                         # HuggingFace repo for ONNX model download
+  hf_filename: "onnx.tar.gz"          # filename in HF repo or S3 URL
+  device: "auto"                      # "auto", "cpu", or "cuda" (for ONNX embedding)
+  indexing_batch_size: 32             # chunks per ONNX inference call (lower = less RAM)
+  indexing_delay_ms: 100              # pause between indexing each file (lower = faster, higher = kinder to CPU)
 
-observability:
-  log_level: "INFO"        # DEBUG, INFO, WARNING, ERROR
-  log_format: "json"       # json or text
-  metrics_enabled: true    # enable /metrics endpoint
-  tracing_enabled: false
+# ─────────────────────────────────────────────────
+# MODELS — auto-downloader on first startup
+# ─────────────────────────────────────────────────
+models:
+  storage_path: "./models"    # root directory for downloaded model files
+  download_on_startup: true   # download missing models at startup
+
+# ─────────────────────────────────────────────────
+# PIPELINE — worker queues, retries, and concurrency
+# ─────────────────────────────────────────────────
+pipeline:
+  stt_stream: "stt_jobs"            # Redis stream name for STT jobs
+  llm_stream: "llm_jobs"            # Redis stream name for LLM jobs
+  tts_stream: "tts_jobs"            # Redis stream name for TTS jobs
+  response_stream: "responses"      # Redis stream name for final responses sent to clients
+  consumer_group: "hakeem_workers"  # Redis consumer group name (shared across nodes)
+  consumer_prefix: "worker"         # prefix for individual consumer IDs
+  stt_max_retries: 3                # max delivery attempts for STT jobs
+  llm_max_retries: 2                # max delivery attempts for LLM jobs
+  tts_max_retries: 3                # max delivery attempts for TTS jobs
+  poll_timeout_ms: 5000             # Redis XREADGROUP block timeout (ms)
+  stt_workers: 1                    # STT workers (Whisper is CPU-heavy, keep low)
+  llm_workers: 1                    # LLM workers (1 is fine — API-bound, not CPU)
+  tts_workers: 2                    # TTS workers (Piper is moderate CPU)
+  ws_workers: 1                     # WS response senders (1 is enough — I/O only)

@@ -15,6 +15,7 @@
 - [Cluster](docs/cluster.md) — Multi-node + crash recovery
 - [Deployment](docs/deployment.md) — Docker + env vars
 - [FAQ](docs/faq.md) — Frequently asked questions
+- [RAG](#23-what-is-rag-retrieval-augmented-generation) — Document search + LLM context injection (in this doc)
 - [Glossary](docs/glossary.md) — Terms
 
 ---
@@ -35,6 +36,7 @@
 12. [Internal vs Remote Tools — The Router](#12-internal-vs-remote-tools--the-router)
 13. [The Remote Tool Bridge (Correlation IDs)](#13-the-remote-tool-bridge-correlation-ids)
 14. [Redis Pub/Sub — How Nodes Talk To Each Other](#14-redis-pubsub--how-nodes-talk-to-each-other)
+14.5. [Wait, What's This "RAG Context" Thing?](#145-wait-whats-this-rag-context-thing)
 15. [The Permission Store](#15-the-permission-store)
 16. [The Voice Pipeline (STT → LLM → TTS)](#16-the-voice-pipeline-stt--llm--tts)
 17. [What Happens On Startup](#17-what-happens-on-startup)
@@ -43,6 +45,8 @@
 20. [Security Model](#20-security-model)
 21. [Glossary](#21-glossary)
 22. [Frequently Asked Questions](#22-frequently-asked-questions)
+23. [What Is RAG? (Retrieval-Augmented Generation)](#23-what-is-rag-retrieval-augmented-generation)
+24. [Even More FAQ](#24-even-more-faq)
 
 ---
 
@@ -863,6 +867,12 @@ If no permission is set for a tool → **deny**. Explicit allow is required.
 PUT /api/v1/permissions/{device_id}/{tool_name}?allowed=true
 Authorization: Bearer <admin_token>
 ```
+
+---
+
+## 14.5. Wait, What's This "RAG Context" Thing?
+
+You'll see "RAG context" mentioned in the pipeline section below. If you don't know what RAG is yet, skip to [Section 23](#23-what-is-rag-retrieval-augmented-generation), read that, then come back. The pipeline does RAG injection at step 2b (between STT and LLM reasoning). Don't panic — you'll get it after reading Section 23.
 
 ---
 
@@ -2313,3 +2323,372 @@ mcp:
   max_retries: 2
   max_tool_loops: 5
 ```
+
+---
+
+## 23. What Is RAG? (Retrieval-Augmented Generation)
+
+### The Problem
+
+You ask the LLM: "What does the architecture look like?"
+
+The LLM has no idea. It doesn't know your codebase. It doesn't know that you have 3 Atom nodes, a Redis backend, and an Android app. It was trained on the internet, not on your `docs/` folder.
+
+So it either:
+- Makes something up (hallucination)
+- Gives a generic answer that's useless
+- Asks for more context
+
+You want it to actually read your docs and answer based on them.
+
+### The Solution: RAG
+
+**RAG = Retrieval-Augmented Generation.** Fancy name, simple idea:
+
+> Before answering, the LLM gets to search your documentation for relevant info. It reads the search results, then answers.
+
+```
+Without RAG:
+LLM: "What's the architecture?" → "I don't know your project."
+
+With RAG:
+LLM: "What's the architecture?" → RUNS SEARCH → finds docs/architecture.md
+     → reads "3 Atom nodes, Redis, Android app"
+     → answers: "You have 3 Atom computers with Redis..."
+```
+
+It's like giving the LLM a **cheat sheet** before the exam. The cheat sheet is your documentation.
+
+### How It Works (The Short Version)
+
+```
+1. You write docs in docs/ folder
+2. System splits them into small chunks (512 characters each)
+3. Each chunk gets turned into a "semantic fingerprint" call an embedding
+4. Embeddings are stored in ChromaDB (a vector database)
+5. When user asks a question, the question also gets an embedding
+6. ChromaDB finds the most similar chunks (by embedding distance)
+7. Those chunks are injected as context to the LLM
+8. LLM answers using that context
+```
+
+### What's an Embedding? (Don't Panic)
+
+An **embedding** is a list of numbers (384 of them) that represents the **meaning** of a piece of text. Not the words, but the *meaning*.
+
+"I love cats" → [0.23, -0.45, 0.12, ... 384 numbers]
+"I adore felines" → [0.22, -0.44, 0.13, ...] ← similar numbers (similar meaning)
+"Quantum physics" → [-0.67, 0.31, -0.89, ...] ← different numbers (different meaning)
+
+Similar ideas → similar numbers. ChromaDB finds documents whose numbers are closest to your question's numbers. That's how you get relevant context.
+
+### Why ONNX Instead of sentence-transformers?
+
+Normally you'd install `sentence-transformers` to generate embeddings. But `sentence-transformers` pulls in **PyTorch** which is 500MB+ and a nightmare on weak ARM/Atom CPUs.
+
+So we use an **ONNX** version of the same model (`all-MiniLM-L6-v2`). ONNX is a lightweight format that runs on any CPU with just `onnxruntime`. The model file is 90MB, the runtime is tiny. No PyTorch needed.
+
+```
+Normal way:   pip install sentence-transformers → 500MB PyTorch → works
+Our way:      pip install onnxruntime tokenizers → 20MB → works better
+```
+
+The ONNX model lives at `models/chroma/onnx/`. The downloader grabs it from S3 (like the STT/TTS models). The `rag/engine.py` loads it once on startup and keeps it in memory.
+
+### How RAG Fits Into the Pipeline
+
+```
+STT → LLM → TTS
+          │
+          ├── 1. Get conversation history from Redis
+          ├── 2. SEARCH DOCS (RAG) ← NEW
+          ├── 3. Build messages: [system prompt, RAG context, history, user text]
+          ├── 4. Call LLM
+          └── 5. Maybe tool loop → TTS
+```
+
+Look at `pipeline/llm_runner.py` lines 52-64:
+
+```python
+rag_context = None
+if self._settings.rag.enabled:
+    rag_context = await _get_rag_context(user_message)
+
+messages = []
+if system_prompt:
+    messages.append({"role": "system", "content": system_prompt})
+if rag_context:
+    messages.append({"role": "system", "content": f"Relevant documentation:\n{rag_context}"})
+```
+
+The RAG context is injected as a **system message** before the conversation history. The LLM sees it as "background info to use when answering." It's authoritative — the LLM is told "this is the relevant documentation, use it."
+
+### What Happens If RAG Is Disabled?
+
+Nothing bad. The LLM just doesn't get the cheat sheet. It answers based on its training data (general knowledge) + conversation history. The pipeline works exactly the same — it just skips the search step.
+
+Note: the ONNX model is still **downloaded on startup** alongside STT and TTS (as long as `models.download_on_startup: true`). `rag.enabled: false` only prevents the LLM from injecting context — it doesn't skip the model download. So when you flip it to `true`, everything is ready to go.
+
+### Performance Impact
+
+On a typical Intel Atom or old laptop (like an i7-2640M):
+
+| Resource | Cost per query |
+|----------|---------------|
+| **Embedding** (question → 384 numbers) | ~20-40ms CPU |
+| **ChromaDB search** (find similar chunks) | ~10-30ms |
+| **Total overhead** | ~30-70ms |
+| **RAM** | +90 MB (ONNX model) |
+
+Compared to the LLM call itself (500ms-3s), RAG adds about **2-10%** latency. You won't feel it.
+
+The ONNX model is tiny compared to Whisper (medium: 1.5GB) or Piper. On a system with 3.7 GB RAM and 400 MB free, the 90 MB model fits comfortably — but if you're already near the limit, you'll hit swap.
+
+### How Effective Is RAG?
+
+It depends on your docs, but here's what you get:
+
+**What it does well:**
+- Finds relevant chunks even when the user's question uses different words than the doc (semantic search, not keyword search)
+- `min_score: 0.4` filters noise — only chunks that are clearly relevant get injected
+- `top_k: 3` keeps the context window tight (the LLM gets 3 short chunks, not a firehose)
+- 512-char chunks with 64-char overlap means context rarely gets cut mid-sentence
+
+**Real example:**
+```
+User asks: "How does the tool bridge work?"
+RAG searches docs/ → finds the "Remote Tool Bridge" section
+LLM gets that section as context → answers accurately from your docs
+
+Without RAG, the LLM would guess or give a generic answer about APIs.
+```
+
+**Limitations:**
+- RAG is only as good as your docs. Garbage in → garbage out.
+- Chunks can split a table or code block in half (the overlap helps, but it's not perfect)
+- The embedding model is general-purpose (all-MiniLM-L6-v2). It's good at finding "similar meaning" but won't understand domain-specific jargon without fine-tuning
+- If your docs are very long, only the top 3 chunks (≈1500 characters total) get injected — the rest is invisible to the LLM
+
+### Changing the Model
+
+You can swap the embedding model from `config.yaml` just like STT/TTS:
+
+```yaml
+rag:
+  embedding_model: "all-MiniLM-L6-v2"     # Model name (used in default S3 URL)
+  model_dir: "./models/chroma"             # Where onnx/ folder lives
+  # Option A: Download from a custom URL
+  download_url: "https://example.com/my-model/onnx.tar.gz"
+  # Option B: Download from HuggingFace
+  hf_repo: "sentence-transformers/all-MiniLM-L6-v2"
+  hf_filename: "onnx.tar.gz"
+```
+
+Priority: `hf_repo` > `download_url` > construct from `embedding_model` name.
+
+If you don't set `download_url` or `hf_repo`, the downloader constructs the URL as:
+```
+https://chroma-onnx-models.s3.amazonaws.com/{embedding_model}/onnx.tar.gz
+```
+
+So changing `embedding_model` to `"all-MiniLM-L12-v2"` would try to download from:
+```
+https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L12-v2/onnx.tar.gz
+```
+
+**The ONNX model must have this exact interface:**
+
+| Tensor | Shape | Type | Description |
+|--------|-------|------|-------------|
+| `input_ids` | `(batch, seq_len)` | int64 | Token IDs from tokenizer |
+| `attention_mask` | `(batch, seq_len)` | int64 | 1 for real tokens, 0 for padding |
+| `token_type_ids` | `(batch, seq_len)` | int64 | Segment IDs (0 for single text) |
+| → `last_hidden_state` | `(batch, seq_len, 384)` | float32 | Token embeddings to mean-pool |
+
+Plus a HuggingFace `tokenizer.json` in the `onnx/` folder. The 384 in the output can be any dimension — the code doesn't hardcode it.
+
+**Short version:** Any ONNX BERT-style embedding model with `input_ids` + `attention_mask` + `token_type_ids` inputs and `last_hidden_state` output will work. Drop it in `models/chroma/onnx/` along with its `tokenizer.json`.
+
+### Absolute Paths
+
+All RAG paths accept absolute paths too:
+
+```yaml
+rag:
+  model_dir: "/home/2kfi/models/chroma"     # Absolute path — works fine
+  vector_store_path: "/home/2kfi/data/vec"  # Anywhere on your filesystem
+  source_directories:                        # Any directory
+    - "/home/2kfi/my-docs"
+```
+
+The upload API saves files to `./data/documents/` by default (relative to the working directory). Change it in `rag/api.py` if you need a different upload dir.
+
+### Configuration
+
+```yaml
+rag:
+  enabled: false                  # Set true to activate
+  chunk_size: 512                 # Characters per chunk
+  chunk_overlap: 64               # Overlap between chunks
+  embedding_model: "all-MiniLM-L6-v2"  # Model name (used in default S3 URL)
+  model_dir: "./models/chroma"         # ONNX model location
+  vector_store_path: "./data/vector_store"  # ChromaDB persistence
+  top_k: 3                        # Max chunks to return per search
+  min_score: 0.4                  # Minimum similarity score (0-1)
+  auto_index_on_start: true       # Re-index source dirs on startup
+  source_directories:             # Which dirs to index
+    - "./docs"
+  download_url: ""                # Custom download URL (optional)
+  hf_repo: ""                     # HuggingFace repo (optional, overrides download_url)
+  hf_filename: "onnx.tar.gz"      # File to download from HF repo
+```
+
+### What Files Are Involved
+
+```
+rag/
+  __init__.py       # Package init, exports get_rag_engine()
+  engine.py         # RAGEngine class: chunking, embedding, search, CRUD
+  api.py            # FastAPI router with 5 REST endpoints
+  schemas.py        # Pydantic models for API
+
+core/config.py      # RAGSettings class (13 config fields)
+core/schemas.py     # DocumentResponse, SearchResult, SearchResponse
+
+pipeline/llm_runner.py  # _get_rag_context() + injection in run_query()
+
+scripts/downloader.py   # download_chroma_model() → ONNX from S3 or HuggingFace
+```
+
+### FAQ: RAG
+
+**Q: Does RAG slow down responses?**
+
+On your i7-2640M: ~20-40ms for embedding, ~10-30ms for search. Total ~30-70ms added to a 500ms-3s LLM call. About 2-10% overhead. You won't notice it.
+
+**Q: Can I use a different embedding model?**
+
+Yes. Set `embedding_model`, `download_url`, or `hf_repo` in config. The model must be ONNX format with `input_ids`/`attention_mask`/`token_type_ids` inputs and `last_hidden_state` output, plus a `tokenizer.json`. See the "Changing the Model" section above.
+
+**Q: What if the ONNX model isn't downloaded?**
+
+It's downloaded on startup automatically (like STT and TTS), as long as `models.download_on_startup: true` (the default). If the download fails, RAG just doesn't work — the rest of the system continues fine. The LLM answers without documentation context.
+
+**Q: Why ChromaDB and not Postgres/ES?**
+
+ChromaDB is purpose-built for vector search (find similar embeddings). Postgres can do it with pgvector, but that's another extension. Elasticsearch is overkill for a 3-node home cluster. ChromaDB is tiny, embedded (no server), and persists to disk at `./data/vector_store/`.
+
+**Q: Can I index PDFs?**
+
+Not yet. The upload endpoint accepts `.md`, `.txt`, `.yaml`, `.json`, `.py`, `.cfg`, `.ini`. PDF support would need a PDF text extractor (easy to add later).
+
+**Q: Can I use absolute paths?**
+
+Yes. `model_dir`, `vector_store_path`, and `source_directories` all accept absolute paths like `/home/2kfi/my-docs`.
+
+**Q: How effective is RAG?**
+
+Good enough to answer "how does the tool bridge work?" from your docs accurately. But it's limited by doc quality, chunk boundaries, and the top-3 limit. See the "How Effective Is RAG?" section above.
+
+**Q: What kind of model do I need? ONNX?**
+
+Yes, ONNX format. Specifically a BERT-style embedding model with 3 inputs (`input_ids`, `attention_mask`, `token_type_ids`) and 1 output (`last_hidden_state`). Plus a HuggingFace `tokenizer.json`. The dimension (384/512/768 etc.) is auto-detected.
+
+---
+
+## 24. Even More FAQ
+
+### Q17: I got "tool_use_failed" from Groq. What's that?
+
+Groq's API is strict about tool definitions. Two things can go wrong:
+
+**Problem 1: Empty parameters object**
+
+```python
+# This tool has NO required properties — Groq hates this:
+{
+  "name": "get_time",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+```
+
+Fix: Add at least one optional parameter so Groq sees a valid schema:
+```python
+{
+  "name": "get_time",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tz": {"type": "string", "description": "Optional timezone"}
+    },
+    "required": []
+  }
+}
+```
+
+**Problem 2: Temporary API glitch**
+
+Sometimes Groq just drops the request. The fix is a **retry wrapper** (`_call_llm_with_retry` in `pipeline/llm_runner.py`) that retries up to 3 times with exponential backoff:
+
+```
+Attempt 1 fails → wait 1s → retry
+Attempt 2 fails → wait 2s → retry
+Attempt 3 fails → wait 4s → retry
+Attempt 4 → raise error (give up)
+```
+
+### Q18: What's the "skip_tts" bug that was fixed?
+
+The `skip_tts` setting in the pipeline can be `True`, `False`, or `"true"` / `"false"` (string, from Redis). The old code called `json.loads()` on it, which crashes on booleans:
+
+```python
+json.loads(True)   # BOOM: TypeError
+```
+
+Fixed by checking the type first:
+```python
+if isinstance(skip_tts, bool):
+    skip = skip_tts
+elif isinstance(skip_tts, str):
+    skip = skip_tts.lower() == "true"
+```
+
+### Q19: I uploaded a file to RAG. Where is it stored?
+
+On disk at `./data/documents/{filename}`. And in ChromaDB at `./data/vector_store/`. If you delete via the API, both get cleaned up (the file and its chunks).
+
+### Q20: Can I run RAG without downloading the ONNX model?
+
+No. But the downloader handles it:
+```bash
+python scripts/downloader.py
+```
+Or let the app download on startup (config: `models.download_on_startup: true`).
+
+The model is 79MB compressed, comes from an S3 bucket (not HuggingFace, because the ONNX format isn't on HF for this model).
+
+---
+
+## Quick Reference: Updated Files
+
+```
+rag/engine.py           RAGEngine: chunking, embedding (ONNX), ChromaDB search
+rag/api.py              REST endpoints for document CRUD + search
+rag/schemas.py          Pydantic models: DocumentResponse, SearchResult, etc.
+```
+
+## Glossary Additions
+
+| Term | Meaning |
+|------|---------|
+| **RAG** | Retrieval-Augmented Generation. Search docs before answering. |
+| **Embedding** | A list of numbers representing the meaning of text (384 floats). |
+| **ChromaDB** | Vector database. Stores embeddings, finds similar ones. |
+| **Chunk** | A small piece of a document (512 chars). |
+| **ONNX** | Open Neural Network Exchange. A lightweight ML model format. |
+| **Vector Search** | Finding items by semantic similarity, not keyword matching. |
+
