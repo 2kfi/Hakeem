@@ -39,7 +39,10 @@ async def stt_handler(data: dict) -> dict:
             )
         )
         text = "".join(segment.text for segment in segments).strip()
-        logger.info(f"STT [{device_id}]: {text}")
+        logger.info(
+            f"STT [{device_id}]: lang={info.language} "
+            f"(confidence={info.language_probability:.3f}) text={text[:80]}"
+        )
         return {
             "device_id": device_id,
             "session_id": data.get("session_id", device_id),

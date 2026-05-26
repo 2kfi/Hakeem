@@ -23,6 +23,7 @@ from core.config import get_settings, Settings
 from core.redis_manager import RedisManager, get_redis
 from core.app_state import get_app_state, AppState
 from core.jwt_auth import get_jwt_manager, verify_jwt
+from api.chat import router as chat_router
 from api.websocket import router as ws_router, _start_ws_listener, _active_connections
 from api.sessions import router as sessions_router
 from api.health import router as health_router
@@ -179,6 +180,8 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.middleware("http")
 async def api_key_fallback(request: Request, call_next):
+    if get_settings().auth.disabled:
+        return await call_next(request)
     if request.url.path in ["/health", "/ready", "/live", "/metrics", "/openapi.json", "/docs", "/redoc"]:
         return await call_next(request)
     if not request.url.path.startswith("/api/"):
@@ -222,6 +225,7 @@ async def add_request_id(request: Request, call_next):
 app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(health_router)
+app.include_router(chat_router)
 # app.include_router(rag_router)  # REST endpoints disabled — context injection via llm_runner only
 
 
@@ -245,6 +249,14 @@ async def not_found_handler(request: Request, exc: HTTPException):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Najim/Hakeem backend")
+    parser.add_argument("--no-auth", action="store_true", help="Disable all auth (JWT + API keys)")
+    args, _ = parser.parse_known_args()
+    if args.no_auth:
+        get_settings().auth.disabled = True
+        logger.warning("Auth is DISABLED (--no-auth)")
+
     import uvicorn
     uvicorn.run(
         app,

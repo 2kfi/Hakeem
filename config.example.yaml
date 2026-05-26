@@ -157,6 +157,8 @@ rag:
   device: "auto"                      # "auto", "cpu", or "cuda" (for ONNX embedding)
   indexing_batch_size: 32             # chunks per ONNX inference call (lower = less RAM)
   indexing_delay_ms: 100              # pause between indexing each file (lower = faster, higher = kinder to CPU)
+  evaluate_hallucinations: false      # B→C guard: retry once then abstain on unfaithful responses
+  evaluation_max_retries: 1           # max re-query attempts before abstaining (0 = only abstain)
 
 # ─────────────────────────────────────────────────
 # MODELS — auto-downloader on first startup

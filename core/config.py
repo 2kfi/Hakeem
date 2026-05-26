@@ -144,6 +144,7 @@ class AuthSettings(BaseSettings):
 
     api_keys: dict[str, dict[str, Any]] = {}
     jwt_only: bool = True
+    disabled: bool = False
 
 
 class RAGSettings(BaseSettings):
@@ -165,6 +166,8 @@ class RAGSettings(BaseSettings):
     indexing_batch_size: int = 32
     indexing_delay_ms: int = 100
     device: str = "auto"
+    evaluate_hallucinations: bool = False
+    evaluation_max_retries: int = 1
 
 
 class _NestedEnvSource:

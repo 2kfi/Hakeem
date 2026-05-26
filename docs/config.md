@@ -180,6 +180,8 @@ Settings are loaded from `config.yaml`. Every value can be overridden via enviro
 | `device` | `RAG_DEVICE` | string | `"auto"` | ONNX runtime device: `"auto"`, `"cpu"`, or `"cuda"` |
 | `indexing_batch_size` | `RAG_INDEXING_BATCH_SIZE` | int | `32` | Chunks per ONNX inference call (lower = less RAM) |
 | `indexing_delay_ms` | `RAG_INDEXING_DELAY_MS` | int | `100` | Pause between indexing each file (lower = faster, higher = kinder to CPU) |
+| `evaluate_hallucinations` | `RAG_EVALUATE_HALLUCINATIONS` | bool | `false` | B→C guard: retry once then abstain on unfaithful responses |
+| `evaluation_max_retries` | `RAG_EVALUATION_MAX_RETRIES` | int | `1` | Max re-query attempts before abstaining (0 = only abstain) |
 
 ### Device settings explained
 

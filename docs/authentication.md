@@ -1,8 +1,18 @@
 # Authentication
 
+## Quick Start — Disable Auth for Local Dev
+
+```bash
+python3 app.py --no-auth
+```
+
+This bypasses **all** JWT and API key checks on every endpoint. Use only for local testing.
+
+---
+
 ## JWT Tokens
 
-Every WebSocket connection and REST API call requires a valid JWT token.
+Every WebSocket connection and REST API call requires a valid JWT token (unless `--no-auth` is used).
 
 ### Structure
 
