@@ -122,6 +122,8 @@ async def main():
                         help="Override system prompt")
     parser.add_argument("--tools", action="store_true", default=False,
                         help="Enable tool calling (default: disabled)")
+    parser.add_argument("--llm-name", default=None,
+                        help="Override model name (skips API probe)")
 
     args = parser.parse_args()
 
@@ -131,21 +133,25 @@ async def main():
         print("ERROR: no questions parsed", flush=True)
         sys.exit(1)
 
-    # ── Probe model name from first question ──────────────────────
-    model_name = "unknown"
-    async with httpx.AsyncClient() as client:
-        probe = await client.post(
-            f"{args.app_url}/api/v1/chat",
-            json={
-                "text": questions[0]["stem"],
-                "system_prompt": args.system_prompt,
-                "tools_enabled": args.tools,
-            },
-            timeout=12000.0,
-        )
-        if probe.status_code == 200:
-            model_name = probe.json().get("model", "unknown")
-            print(f"Detected model: {model_name}", flush=True)
+    # ── Model name ───────────────────────────────────────────────
+    if args.llm_name:
+        model_name = args.llm_name
+        print(f"Using model: {model_name} (--llm-name)", flush=True)
+    else:
+        model_name = "unknown"
+        async with httpx.AsyncClient() as client:
+            probe = await client.post(
+                f"{args.app_url}/api/v1/chat",
+                json={
+                    "text": questions[0]["stem"],
+                    "system_prompt": args.system_prompt,
+                    "tools_enabled": args.tools,
+                },
+                timeout=120.0,
+            )
+            if probe.status_code == 200:
+                model_name = probe.json().get("model", "unknown")
+                print(f"Detected model: {model_name}", flush=True)
 
     model_slug = model_name.replace("/", "-").replace(" ", "_")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

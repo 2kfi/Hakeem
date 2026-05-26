@@ -8,7 +8,7 @@
 # ─────────────────────────────────────────────────
 api:
   host: "0.0.0.0"              # bind address (0.0.0.0 = all interfaces)
-  port: 8080                    # HTTP port
+  port: 8090                    # HTTP port
   debug: false                  # enable debug logging + hot reload
   cors_origins: ["*"]           # allowed CORS origins (set to your frontend URL in prod)
   rate_limit: "60/minute"       # max requests per minute per IP
@@ -23,7 +23,7 @@ api:
 # REDIS — shared state, pub/sub, job queues
 # ─────────────────────────────────────────────────
 redis:
-  url: "redis://:hakeem_pass@redis:6379/0"   # Redis URL (overrides host/port/password if set)
+  url: "redis://:YOUR_REDIS_PASSWORD@127.0.0.1:6379/0"   # Redis URL (overrides host/port/password if set)
   tls: false                                  # enable TLS for Redis connection
   pool_size: 10                               # connection pool size (increase for multi-node)
 
@@ -75,7 +75,7 @@ stt:
   model_name: "medium"            # Whisper model size (tiny/base/small/medium/large-v3)
   model_dir: "./models"           # where Whisper model weights are stored
   hf_repo: "Systran/faster-whisper-medium" # HuggingFace repo for auto-download
-  device: "auto"                  # "auto" / "cpu" / "cuda" / "mps"
+  device: "cuda"                  # "auto" / "cpu" / "cuda" / "mps"
   compute_type: "int8"            # precision (int8_float16 / int8 / float16 / float32)
   beam_size: 5                    # beam search width (higher = better but slower)
   vad_filter: true                # skip silent segments before transcription
@@ -91,12 +91,12 @@ tts:
       local_path: "TTS-CORI-EN"   # subdirectory under model_dir containing .onnx + .json
       hf_repo: "rhasspy/piper-voices"
       voice: "en.en_GB.cori.high"
-      use_cuda: false
+#      use_cuda: true
     ar:
       local_path: "TTS-KAREEM-ARABIC"
       hf_repo: "rhasspy/piper-voices"
       voice: "ar.ar_JO.kareem.medium"
-      use_cuda: false
+#      use_cuda: false
   default_voice: "en"             # fallback language if none specified
   max_length: 500                 # max text chars per TTS call (longer text is truncated)
   synthesis:                      # Piper synthesis parameters
@@ -113,7 +113,7 @@ tts:
 # LLM (Large Language Model / Groq / OpenAI-compatible)
 # ─────────────────────────────────────────────────
 llm:
-  api_base_url: "https://api.groq.com/openai/v1"  # OpenAI-compatible endpoint
+  api_base_url: "https://127.0.0.1:2312/v1"  # OpenAI-compatible endpoint
   api_key: "gsk_your_groq_api_key_here"            # API key
   model: "llama-3.3-70b-versatile"                 # model name
   timeout: 60.0                                     # request timeout in seconds
