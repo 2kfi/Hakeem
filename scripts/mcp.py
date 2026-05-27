@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 """MCP client wrapper for connecting to MCP servers.
 
 Supports connecting to external MCP servers over SSE and HTTP transports,

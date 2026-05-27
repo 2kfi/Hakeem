@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Arkan Fakoseh -  @2kfi on github
 """
 Hakeem RAG benchmark — run medical QA questions through the app's configured LLM.
 

@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Changelog - LLMSIMT-Hakeem
 
 ## ALPHA V.17 - Wake Word Client

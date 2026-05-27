@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 from datetime import datetime
 from typing import Optional
 from core.redis_manager import RedisManager

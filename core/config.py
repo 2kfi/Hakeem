@@ -1,6 +1,7 @@
+# Arkan Fakoseh -  @2kfi on github
 import os
 from functools import lru_cache
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
 from typing import Any, Optional
 
@@ -201,6 +202,19 @@ class _NestedEnvSource:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unpack_api(cls, data: dict) -> dict:
+        if isinstance(data, dict) and "api" in data:
+            api = data.pop("api")
+            if isinstance(api, dict):
+                for k, v in api.items():
+                    if k in ("host", "port"):
+                        data[f"api_{k}"] = v
+                    else:
+                        data[k] = v
+        return data
 
     @classmethod
     def settings_customise_sources(

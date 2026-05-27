@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional

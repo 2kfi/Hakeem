@@ -1,1 +1,2 @@
+# Arkan Fakoseh -  @2kfi on github
 To download the models please run "python downloader.py" in the repo's root folder

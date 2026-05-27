@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Configuration Reference
 
 Settings are loaded from `config.yaml`. Every value can be overridden via environment variables.

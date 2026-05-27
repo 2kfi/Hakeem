@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Sessions, Conversations & Devices
 
 ## Session Registry

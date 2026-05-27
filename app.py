@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 """
 Najim Backend - Multi-Tenant Distributed Voice Assistant
 """

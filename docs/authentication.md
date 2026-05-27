@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Authentication
 
 ## Quick Start — Disable Auth for Local Dev

@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Hakeem Backend — Complete Architecture Guide
 
 > **Who is this for?** You know how to code. You understand APIs. But terms like "load balancer", "JWT", "Redis pub/sub", "correlation ID", "WebSocket" are fuzzy.  

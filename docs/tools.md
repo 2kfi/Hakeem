@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Tools
 
 The tool system lets the LLM perform actions beyond text generation. Tools are either **internal** (run on the cluster node) or **remote** (run on the Android phone).

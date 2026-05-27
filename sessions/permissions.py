@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 from core.redis_manager import RedisManager
 
 

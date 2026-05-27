@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Pipeline — STT → LLM → TTS
 
 The pipeline processes voice in 4 stages, each decoupled by a Redis stream checkpoint.

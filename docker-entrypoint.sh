@@ -1,4 +1,5 @@
 #!/bin/sh
+# Arkan Fakoseh -  @2kfi on github
 # =============================================================================
 # Hakeem Backend — Docker Entrypoint
 # Reads environment variables, generates config.yaml, starts uvicorn.

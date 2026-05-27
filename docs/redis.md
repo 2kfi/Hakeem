@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Redis — The Shared Brain
 
 All 3 cluster nodes connect to the same Redis instance. It stores all runtime state.

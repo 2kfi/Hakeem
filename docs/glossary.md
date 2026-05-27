@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Glossary
 
 | Term                | Meaning                                                                                      |

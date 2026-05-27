@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Frequently Asked Questions
 
 ### Q1: What if a node crashes mid-pipeline?

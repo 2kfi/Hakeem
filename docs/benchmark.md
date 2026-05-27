@@ -1,3 +1,4 @@
+<!-- Arkan Fakoseh -  @2kfi on github -->
 # Benchmark Testing
 
 Run medical USMLE-style questions against the app's configured LLM (from `config.yaml`).

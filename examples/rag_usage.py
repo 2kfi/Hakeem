@@ -1,3 +1,4 @@
+# Arkan Fakoseh -  @2kfi on github
 """
 Example: Using Hakeem's RAG API to index and search documents.
 

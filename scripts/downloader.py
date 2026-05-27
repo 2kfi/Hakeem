@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Arkan Fakoseh -  @2kfi on github
 """
 Model downloader - downloads only needed model files from HuggingFace.
 Fixed to extract flat files and destroy the nested directory tree!
