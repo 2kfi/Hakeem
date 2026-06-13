@@ -118,7 +118,7 @@ class ClusterSettings(BaseSettings):
 
     node_id: str = os.uname().nodename
     node_role: str = "worker"
-    pubsub_channel: str = "najim:events"
+    pubsub_channel: str = "hakeem:events"
 
 
 class PipelineSettings(BaseSettings):
@@ -128,7 +128,7 @@ class PipelineSettings(BaseSettings):
     llm_stream: str = "llm_jobs"
     tts_stream: str = "tts_jobs"
     response_stream: str = "responses"
-    consumer_group: str = "najim_workers"
+    consumer_group: str = "hakeem_workers"
     consumer_prefix: str = "worker"
     stt_max_retries: int = 3
     llm_max_retries: int = 2
@@ -171,6 +171,13 @@ class RAGSettings(BaseSettings):
     evaluation_max_retries: int = 1
 
 
+class ModelsSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MODEL_")
+
+    storage_path: str = "./models"
+    download_on_startup: bool = False
+
+
 class _NestedEnvSource:
     def __init__(self, settings_cls):
         pass
@@ -190,6 +197,7 @@ class _NestedEnvSource:
             "cluster": "CLUSTER_",
             "auth": "AUTH_",
             "rag": "RAG_",
+            "models": "MODEL_",
         }
         for field_name, prefix in nested_prefixes.items():
             sub: dict[str, Any] = result.setdefault(field_name, {})
@@ -255,6 +263,7 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     rag: RAGSettings = Field(default_factory=RAGSettings)
+    models: ModelsSettings = Field(default_factory=ModelsSettings)
 
 
 @lru_cache

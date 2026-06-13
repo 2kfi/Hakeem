@@ -14,6 +14,7 @@ from llama_index.core.schema import Document, NodeRelationship, RelatedNodeInfo,
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from core.config import RAGSettings
+from rag.download import download_onnx_model
 from rag.onnx_embedding import OnnxEmbedding, _load_onnx_session
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ _SUPPORTED_EXTENSIONS = {
     ".md", ".txt", ".yaml", ".yml", ".json",
     ".pdf", ".docx", ".odt", ".odp", ".ods",
     ".csv", ".xlsx", ".xls", ".pptx",
-    ".html", ".htm",
+    ".html", ".htm", ".zim",
 }
 
 
@@ -126,6 +127,23 @@ def _read_file(path: Path) -> str:
         extractor.feed(path.read_text(encoding="utf-8", errors="replace"))
         return extractor.result()
 
+    if ext == ".zim":
+        import zim as zim_mod
+
+        parts = []
+        zim_file = zim_mod.open(str(path))
+        try:
+            for article in zim_file.articles:
+                text = article.text if article.text else ""
+                title = article.title if article.title else ""
+                url = article.url if article.url else ""
+                if text.strip():
+                    header = f"[{title}]({url})" if title else ""
+                    parts.append(f"{header}\n{text}" if header else text)
+        finally:
+            zim_file.close()
+        return "\n\n---\n\n".join(parts) if parts else ""
+
     return path.read_text(encoding="utf-8", errors="replace")
 
 
@@ -157,6 +175,7 @@ class LlamaRAGEngine:
 
         def _init():
             os.makedirs(self._settings.vector_store_path, exist_ok=True)
+            download_onnx_model(self._settings)
             _load_onnx_session(self._settings.model_dir, device=self._settings.device)
 
             self._embed_model = OnnxEmbedding(

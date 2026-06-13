@@ -183,7 +183,7 @@ def download_model(local_path: str, hf_repo: str, model_type: str = "stt", voice
 def check_and_download_models(config: dict):
     # STT
     stt = config.get("stt", {})
-    stt_path = stt.get("model_path", "models/whisper-medium")
+    stt_path = stt.get("model_dir", "models/whisper-medium")
     stt_repo = stt.get("hf_repo", "")
     download_on_startup = config.get("models", {}).get("download_on_startup", False)
     
@@ -292,7 +292,7 @@ def download_chroma_model(local_path: str, rag_config: dict = None) -> bool:
 
 def warn_missing_models(config: dict):
     stt = config.get("stt", {})
-    stt_path = stt.get("model_path", "models/whisper-medium")
+    stt_path = stt.get("model_dir", "models/whisper-medium")
     
     if not has_stt_model(stt_path):
         logger.warning(f"MISSING STT: {stt_path}")
@@ -314,7 +314,7 @@ def warn_missing_models(config: dict):
 
 def validate_minimum(config: dict) -> bool:
     stt = config.get("stt", {})
-    stt_path = stt.get("model_path", "models/whisper-medium")
+    stt_path = stt.get("model_dir", "models/whisper-medium")
     tts_configs = config.get("tts", {})
     
     stt_ok = has_stt_model(stt_path)
@@ -361,7 +361,7 @@ def main():
     if not args.force:
         # Check STT
         stt = config.get("stt", {})
-        stt_path = stt.get("model_path", "")
+        stt_path = stt.get("model_dir", "")
         stt_ok = has_stt_model(stt_path)
         
         # Check TTS
