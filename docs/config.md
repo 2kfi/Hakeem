@@ -194,6 +194,114 @@ Settings are loaded from `config.yaml`. Every value can be overridden via enviro
 
 ---
 
+## `medrag` — Medical RAG Pipeline (prefix: `MEDRAG_`)
+
+The new Hakeem MedRAG pipeline replaces the old ChromaDB-based RAG for medical domains. It adds domain isolation, parent-document retrieval, Neo4j Knowledge Graph, multi-hop query decomposition, hybrid dense+sparse search, cross-encoder reranking, and corrective RAG.
+
+| Field | Env Var | Type | Default | Description |
+|-------|---------|------|---------|-------------|
+| `enabled` | `MEDRAG_ENABLED` | bool | `false` | Master switch |
+| `qdrant_host` | `MEDRAG_QDRANT_HOST` | string | `"localhost"` | Qdrant vector DB host |
+| `qdrant_port` | `MEDRAG_QDRANT_PORT` | int | `6333` | Qdrant gRPC port |
+| `qdrant_api_key` | `MEDRAG_QDRANT_API_KEY` | string | `""` | Qdrant API key |
+| `collection_name_prefix` | `MEDRAG_COLLECTION_NAME_PREFIX` | string | `"hakeem"` | Prefix for Qdrant collections |
+| `vector_size` | `MEDRAG_VECTOR_SIZE` | int | `384` | Embedding dimension |
+| `domains` | — | list | `["hepatology", "nephrology", "neurology"]` | Isolated medical domains |
+| `domain_source_dirs` | — | dict | `{}` | `{domain: /path/to/source}` mapping |
+| `router_model_path` | `MEDRAG_ROUTER_MODEL_PATH` | string | `"./models/medical_router"` | MedBERT ONNX domain classifier path |
+| `router_threshold` | `MEDRAG_ROUTER_THRESHOLD` | float | `0.6` | Confidence threshold for routing |
+| `child_chunk_size` | `MEDRAG_CHILD_CHUNK_SIZE` | int | `128` | Word tokens per child chunk |
+| `child_chunk_overlap` | `MEDRAG_CHILD_CHUNK_OVERLAP` | int | `16` | Overlap between child chunks |
+| `parent_chunk_size` | `MEDRAG_PARENT_CHUNK_SIZE` | int | `1024` | Word tokens per parent chunk |
+| `parent_chunk_overlap` | `MEDRAG_PARENT_CHUNK_OVERLAP` | int | `64` | Overlap between parent chunks |
+| `hybrid_top_k` | `MEDRAG_HYBRID_TOP_K` | int | `30` | Raw results before reranking |
+| `reranker_top_k` | `MEDRAG_RERANKER_TOP_K` | int | `5` | Results after cross-encoder reranking |
+| `rrf_k` | `MEDRAG_RRF_K` | int | `60` | RRF fusion constant |
+| `reranker_model_path` | `MEDRAG_RERANKER_MODEL_PATH` | string | `"./models/bge_reranker"` | bge-reranker-v2-m3 ONNX path |
+| `reranker_device` | `MEDRAG_RERANKER_DEVICE` | string | `"auto"` | Reranker compute device |
+| `decomposer_enabled` | `MEDRAG_DECOMPOSER_ENABLED` | bool | `true` | Enable multi-hop query decomposition |
+| `decomposer_num_queries` | `MEDRAG_DECOMPOSER_NUM_QUERIES` | int | `3` | Number of sub-queries to generate |
+| `neo4j_uri` | `MEDRAG_NEO4J_URI` | string | `"bolt://localhost:7687"` | Neo4j connection URI |
+| `neo4j_user` | `MEDRAG_NEO4J_USER` | string | `"neo4j"` | Neo4j username |
+| `neo4j_password` | `MEDRAG_NEO4J_PASSWORD` | string | `""` | Neo4j password |
+| `graph_traversal_depth` | `MEDRAG_GRAPH_TRAVERSAL_DEPTH` | int | `2` | BFS depth for KG traversal |
+| `crag_enabled` | `MEDRAG_CRAG_ENABLED` | bool | `true` | Enable corrective RAG verification |
+| `llm_api_base` | `MEDRAG_LLM_API_BASE` | string | `"http://10.1.1.180:2312/v1"` | LLM API for decomposition + CRAG |
+| `llm_api_key` | `MEDRAG_LLM_API_KEY` | string | `""` | LLM API key |
+| `llm_model` | `MEDRAG_LLM_MODEL` | string | `"unsloth/gemma-4-E2B"` | LLM model for decomposition + CRAG |
+| `model_dir` | `MEDRAG_MODEL_DIR` | string | `"./models/chroma"` | Embedding ONNX model directory |
+| `device` | `MEDRAG_DEVICE` | string | `"auto"` | Embedding compute device |
+| `indexing_batch_size` | `MEDRAG_INDEXING_BATCH_SIZE` | int | `16` | Chunks per ONNX call during indexing |
+| `indexing_delay_ms` | `MEDRAG_INDEXING_DELAY_MS` | int | `100` | Pause between file indexes |
+
+### Architecture
+
+```
+User Query → Semantic Router (MedBERT) → Domain(s) + Entities
+                                                 │
+                    ┌────────────────────────────┤
+                    ▼                            ▼
+          Query Decomposer              Knowledge Graph (Neo4j)
+          (MedGemma, 3 sub-queries)      BFS traversal, entity paths
+                    │                            │
+                    ▼                            │
+          Hybrid Retriever (Qdrant)              │
+          dense + BM25 per sub-query             │
+          RRF fusion                             │
+                    │                            │
+                    ▼                            │
+          Parent Resolver                        │
+          child→parent chunk mapping             │
+                    │                            │
+                    ▼                            │
+          Cross-Encoder Reranker                 │
+          (bge-reranker-v2-m3 ONNX)              │
+                    │                            │
+                    ▼                            ▼
+          Corrective RAG (CRAG) ←─── GraphRAG Paths
+          LLM verifies sufficiency
+                    │
+         ┌──────────┴──────────┐
+         ▼                     ▼
+    Sufficient            Insufficient
+         │                     │
+         ▼                     ▼
+    CitationFormatter      Abstention Message
+    [Doc_ID:filename]      "Insufficient clinical
+    + GraphRAG paths       data in internal DB"
+```
+
+### Required Services
+
+- **Qdrant** — vector database (run as shared server, not embedded)
+- **Neo4j** — knowledge graph (hard fail if unavailable)
+
+Start with:
+```bash
+docker compose -f docker-compose.infra.yml up -d qdrant neo4j
+```
+
+Or as part of the full stack:
+```bash
+docker compose up -d
+```
+
+### Pipeline Flow
+
+```
+1. Semantic Router classifies query into domain(s), extracts entities
+2. Query Decomposer splits complex queries into 3 sub-questions (via MedGemma)
+3. Hybrid Retriever searches Qdrant per domain × sub-query (dense + BM25), RRF fusion
+4. Parent Resolver maps child chunks → parent chunks (word-overlap matching)
+5. Cross-Encoder Reranker re-scores top-30, keeps top-5
+6. Knowledge Graph traverses entity relationships (BFS)
+7. Corrective RAG verifies context sufficiency via LLM
+8. Citation Formatter enforces [Doc_ID:filename] citations
+   → Abstains if insufficient: "Insufficient clinical data in internal database"
+```
+
+---
+
 ## `models` — Auto-downloader (no env prefix)
 
 | Field | Env Var | Type | Default | Description |

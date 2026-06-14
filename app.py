@@ -28,6 +28,7 @@ from api.chat import router as chat_router
 from api.websocket import router as ws_router, _start_ws_listener, _active_connections
 from api.sessions import router as sessions_router
 from api.health import router as health_router
+from rag.api import router as rag_router
 from pipeline.orchestrator import WorkerManager
 from rag.engine import init_rag_engine, get_rag_engine
 from scripts.mcp import MCPWrapper, openapi_spec_to_tools
@@ -74,17 +75,15 @@ async def lifespan(app: FastAPI):
     # Phase 2: RAG (file change detection)
     # ═══════════════════════════════════════════════════════════════════
     logger.info("═══════════ Phase 2: RAG ═══════════")
-    if settings.rag.enabled:
-        engine = await init_rag_engine(settings.rag)
-        if engine and settings.rag.auto_index_on_start:
-            dirs = settings.rag.source_directories
+    if settings.medrag.enabled:
+        engine = await init_rag_engine(settings.medrag)
+        if engine and settings.medrag.auto_index_on_start:
+            dirs = settings.medrag.domain_source_dirs
             if dirs:
-                logger.info(f"RAG: checking {len(dirs)} directories for changes...")
+                logger.info(f"RAG: checking {len(dirs)} domain dirs for changes...")
                 n = await engine.index_if_changed(dirs)
                 if n:
                     logger.info(f"RAG: indexed {n} new/changed chunks")
-        elif not settings.rag.auto_index_on_start:
-            logger.info("RAG: auto-index on start disabled (auto_index_on_start=false)")
 
     # ═══════════════════════════════════════════════════════════════════
     # Phase 3: Models (TTS + Whisper + LLM)
@@ -227,7 +226,7 @@ app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(health_router)
 app.include_router(chat_router)
-# app.include_router(rag_router)  # REST endpoints disabled — context injection via llm_runner only
+app.include_router(rag_router)
 
 
 @app.get("/")

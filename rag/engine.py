@@ -1,21 +1,24 @@
-# Arkan Fakoseh -  @2kfi on github
 import asyncio
 import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
 
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+import numpy as np
 
-from llama_index.core import VectorStoreIndex
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.schema import Document, NodeRelationship, RelatedNodeInfo, ObjectType
-from llama_index.vector_stores.chroma import ChromaVectorStore
-
-from core.config import RAGSettings
+from core.config import HakeemRAGSettings
 from rag.download import download_onnx_model
+from rag.hakeem_citation import HakeemCitationFormatter
+from rag.hakeem_corrective_rag import HakeemCorrectiveRAG
+from rag.hakeem_hybrid_retriever import HakeemHybridRetriever
+from rag.hakeem_knowledge_graph import HakeemKnowledgeGraph
+from rag.hakeem_parent_retriever import HakeemParentRetriever
+from rag.hakeem_qdrant_store import HakeemQdrantStore
+from rag.hakeem_query_decomposer import HakeemQueryDecomposer
+from rag.hakeem_reranker import HakeemReranker
+from rag.hakeem_semantic_router import HakeemSemanticRouter
 from rag.onnx_embedding import OnnxEmbedding, _load_onnx_session
+from rag.schemas import RAGResponse, ScoredChunk
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +132,6 @@ def _read_file(path: Path) -> str:
 
     if ext == ".zim":
         import zim as zim_mod
-
         parts = []
         zim_file = zim_mod.open(str(path))
         try:
@@ -147,315 +149,363 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-class LlamaRAGEngine:
-    def __init__(self, settings: RAGSettings):
+class HakeemRAGEngine:
+    def __init__(self, settings: HakeemRAGSettings):
         self._settings = settings
-        self._chroma_client: Any = None
-        self._collection: Any = None
-        self._vector_store: Optional[ChromaVectorStore] = None
-        self._index: Optional[VectorStoreIndex] = None
         self._embed_model: Optional[OnnxEmbedding] = None
-        self._splitter = SentenceSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        )
+        self._router: Optional[HakeemSemanticRouter] = None
+        self._qdrant: Optional[HakeemQdrantStore] = None
+        self._parent_retriever: Optional[HakeemParentRetriever] = None
+        self._graph: Optional[HakeemKnowledgeGraph] = None
+        self._decomposer: Optional[HakeemQueryDecomposer] = None
+        self._hybrid_retriever: Optional[HakeemHybridRetriever] = None
+        self._reranker: Optional[HakeemReranker] = None
+        self._crag: Optional[HakeemCorrectiveRAG] = None
+        self._citation: Optional[HakeemCitationFormatter] = None
         self._initialized = False
+        self._init_lock = asyncio.Lock()
+        self._mtime_cache: dict[str, float] = {}
 
     @property
     def is_initialized(self) -> bool:
         return self._initialized
 
-    def collection_count(self) -> int:
-        if not self._initialized or self._collection is None:
-            return 0
-        return self._collection.count()
+    async def initialize(self):
+        async with self._init_lock:
+            if self._initialized:
+                return
+            await self._initialize_once()
 
-    async def initialize(self) -> None:
+    async def _initialize_once(self):
+        s = self._settings
         loop = asyncio.get_event_loop()
 
-        def _init():
-            os.makedirs(self._settings.vector_store_path, exist_ok=True)
-            download_onnx_model(self._settings)
-            _load_onnx_session(self._settings.model_dir, device=self._settings.device)
+        def _init_embedding():
+            os.makedirs(s.model_dir, exist_ok=True)
+            download_onnx_model(model_dir=s.model_dir)
+            _load_onnx_session(s.model_dir, device=s.device)
 
             self._embed_model = OnnxEmbedding(
-                model_dir=self._settings.model_dir,
-                device=self._settings.device,
-                embed_batch_size=self._settings.indexing_batch_size,
+                model_dir=s.model_dir,
+                device=s.device,
+                embed_batch_size=s.indexing_batch_size,
             )
 
-            self._chroma_client = chromadb.PersistentClient(
-                path=self._settings.vector_store_path,
-                settings=ChromaSettings(anonymized_telemetry=False),
-            )
-            self._collection = self._chroma_client.get_or_create_collection(
-                name="hakeem_rag",
-                metadata={"hnsw:space": "cosine"},
-            )
+        await loop.run_in_executor(None, _init_embedding)
+        logger.info("Embedding model loaded")
 
-            self._vector_store = ChromaVectorStore(
-                chroma_collection=self._collection,
-            )
+        self._qdrant = HakeemQdrantStore(
+            host=s.qdrant_host,
+            port=s.qdrant_port,
+            api_key=s.qdrant_api_key,
+            prefix=s.collection_name_prefix,
+            vector_size=s.vector_size,
+        )
+        await self._qdrant.initialize(s.domains)
+        logger.info("Qdrant store initialized")
 
-            self._index = VectorStoreIndex.from_vector_store(
-                vector_store=self._vector_store,
-                embed_model=self._embed_model,
-            )
+        self._parent_retriever = HakeemParentRetriever(
+            embed_model=self._embed_model,
+            child_chunk_size=s.child_chunk_size,
+            child_chunk_overlap=s.child_chunk_overlap,
+            parent_chunk_size=s.parent_chunk_size,
+            parent_chunk_overlap=s.parent_chunk_overlap,
+        )
+        logger.info("Parent retriever initialized")
 
-        await loop.run_in_executor(None, _init)
-        self._initialized = True
-        logger.info(
-            f"LlamaRAGEngine initialized: model_dir={self._settings.model_dir}/onnx, "
-            f"collection={self._collection.count()} chunks"
+        self._router = HakeemSemanticRouter(
+            model_path=s.router_model_path,
+            domains=s.domains,
+            threshold=s.router_threshold,
+            device=s.device,
+        )
+        await self._router.initialize()
+        logger.info("Semantic router initialized")
+
+        self._graph = HakeemKnowledgeGraph(
+            uri=s.neo4j_uri,
+            user=s.neo4j_user,
+            password=s.neo4j_password,
+            traversal_depth=s.graph_traversal_depth,
+        )
+        await self._graph.initialize()
+        logger.info("Knowledge graph initialized")
+
+        self._decomposer = HakeemQueryDecomposer(
+            api_base=s.llm_api_base,
+            model=s.llm_model,
+            api_key=s.llm_api_key,
+            num_queries=s.decomposer_num_queries,
+        )
+        logger.info("Query decomposer initialized")
+
+        self._hybrid_retriever = HakeemHybridRetriever(
+            qdrant_store=self._qdrant,
+            rrf_k=s.rrf_k,
+            top_k=s.hybrid_top_k,
         )
 
-    async def index_document(
-        self, file_path: str, doc_id: Optional[str] = None
-    ) -> dict[str, Any]:
+        self._reranker = HakeemReranker(
+            model_path=s.reranker_model_path,
+            device=s.reranker_device,
+            top_k=s.reranker_top_k,
+        )
+        await self._reranker.initialize()
+        logger.info("Reranker initialized")
+
+        self._crag = HakeemCorrectiveRAG(
+            api_base=s.llm_api_base,
+            model=s.llm_model,
+            api_key=s.llm_api_key,
+            enabled=s.crag_enabled,
+        )
+
+        self._citation = HakeemCitationFormatter()
+
+        self._initialized = True
+        logger.info("HakeemRAGEngine fully initialized: %d domains, vector_size=%d",
+                     len(s.domains), s.vector_size)
+
+    async def query(self, user_message: str,
+                    llm_api_base: Optional[str] = None,
+                    llm_api_key: Optional[str] = None,
+                    llm_model: Optional[str] = None) -> RAGResponse:
         if not self._initialized:
-            raise RuntimeError("RAGEngine not initialized")
+            return RAGResponse(error="RAG engine not initialized",
+                               sufficient=False)
+
+        s = self._settings
+
+        api_base = llm_api_base or s.llm_api_base
+        api_key = llm_api_key or s.llm_api_key
+        model = llm_model or s.llm_model
+
+        routes = await self._router.route(user_message)
+        domains = [r.domain for r in routes]
+        all_entities = []
+        for r in routes:
+            all_entities.extend(r.entities)
+
+        logger.info("RAG route: domains=%s, entities=%d",
+                     domains, len(all_entities))
+
+        if s.decomposer_enabled and s.decomposer_num_queries > 1:
+            try:
+                sub_queries = await self._decomposer.decompose(
+                    user_message, s.decomposer_num_queries,
+                    api_base=api_base, api_key=api_key,
+                )
+            except Exception as e:
+                logger.warning("Decomposition failed, using original query: %s", e)
+                sub_queries = [user_message]
+        else:
+            sub_queries = [user_message]
+
+        def _make_sparse(text: str) -> dict:
+            tokens = text.lower().split()
+            tf: dict[str, int] = {}
+            for t in tokens:
+                tf[t] = tf.get(t, 0) + 1
+            max_freq = max(tf.values()) if tf else 1
+            sparse_indices = [abs(hash(t)) % 100000 for t in tf]
+            sparse_values = [freq / max_freq for freq in tf.values()]
+            return {"indices": sparse_indices, "values": sparse_values}
+
+        query_embeddings: list[tuple[str, list[float], dict]] = []
+        for sq in sub_queries:
+            dv = await self._embed_model._aget_query_embedding(sq)
+            sv = _make_sparse(sq)
+            query_embeddings.append((sq, dv, sv))
+
+        scored_chunks = await self._hybrid_retriever.search(
+            query=user_message,
+            domains=domains,
+            dense_vector=query_embeddings[0][1],
+            sparse_vector=query_embeddings[0][2],
+            query_embeddings=query_embeddings,
+        )
+
+        if not scored_chunks:
+            logger.info("No vector results for query")
+            return RAGResponse(sufficient=False,
+                               verification_status="no_results",
+                               domains=domains)
+
+        parent_chunks = self._parent_retriever.resolve_parents(scored_chunks)
+
+        top_chunks = await self._reranker.rerank(user_message, parent_chunks)
+
+        graph_paths = await self._graph.graph_traversal(all_entities)
+
+        crag_result = await self._crag.verify(user_message, top_chunks)
+
+        if not crag_result.sufficient and crag_result.status == "insufficient":
+            logger.warning("CRAG: insufficient context for query")
+            abstention = await self._crag.abstain()
+            return RAGResponse(
+                context=abstention,
+                formatted_context=abstention,
+                chunks=top_chunks,
+                graph_paths=graph_paths,
+                domains=domains,
+                verification_status="insufficient",
+                sufficient=False,
+            )
+
+        rag_response = self._citation.build_rag_response(
+            chunks=top_chunks,
+            graph_paths=graph_paths,
+            verification_status=crag_result.status,
+            sufficient=crag_result.sufficient,
+        )
+
+        return rag_response
+
+    async def index_document(self, file_path: str, domain: str,
+                              doc_id: Optional[str] = None) -> dict[str, Any]:
+        if not self._initialized:
+            raise RuntimeError("HakeemRAGEngine not initialized")
 
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        if domain not in self._settings.domains:
+            raise ValueError(f"Unknown domain '{domain}'. Valid: {self._settings.domains}")
+
         doc_id = doc_id or path.stem
         text = _read_file(path)
 
         if not text.strip():
-            logger.warning(f"Empty file: {file_path}")
-            return {
-                "doc_id": doc_id,
-                "filename": path.name,
-                "chunks": 0,
-                "status": "empty",
-            }
+            logger.warning("Empty file: %s", file_path)
+            return {"doc_id": doc_id, "filename": path.name,
+                    "chunks": 0, "status": "empty", "domain": domain}
 
-        file_mtime = path.stat().st_mtime
+        mtime = path.stat().st_mtime
+        filename = path.name
+        source_file = str(path.resolve())
 
-        loop = asyncio.get_event_loop()
+        child_chunks, child_embeddings = self._parent_retriever.chunk_document(
+            text=text, doc_id=doc_id, filename=filename,
+            source_file=source_file, domain=domain, mtime=mtime,
+        )
 
-        def _index():
-            document = Document(
-                text=text,
-                metadata={
-                    "doc_id": doc_id,
-                    "filename": path.name,
-                    "source_file": str(path.resolve()),
-                    "mtime": file_mtime,
-                },
-            )
+        if not child_chunks:
+            return {"doc_id": doc_id, "filename": path.name,
+                    "chunks": 0, "status": "empty", "domain": domain}
 
-            nodes = self._splitter.get_nodes_from_documents([document])
+        await self._qdrant.delete_document(domain, doc_id)
+        await self._qdrant.add_chunks(domain, child_chunks, child_embeddings)
 
-            for i, node in enumerate(nodes):
-                node.metadata["chunk_index"] = i
-                node.embedding = self._embed_model._get_text_embedding(
-                    node.get_content()
-                )
-                node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(
-                    node_id=doc_id,
-                    node_type=ObjectType.DOCUMENT,
-                )
+        entities = await self._router.extract_entities(text)
+        await self._graph.index_document(doc_id, text, domain, entities)
 
-            existing = self._collection.get(where={"doc_id": doc_id})
-            if existing["ids"]:
-                self._collection.delete(ids=existing["ids"])
-            self._vector_store.add(nodes)
+        self._mtime_cache[source_file] = mtime
 
-            return len(nodes)
-
-        chunk_count = await loop.run_in_executor(None, _index)
-        logger.info(f"Indexed {path.name}: {chunk_count} chunks")
+        logger.info("Indexed %s into domain=%s: %d chunks, %d entities",
+                     filename, domain, len(child_chunks), len(entities))
         return {
             "doc_id": doc_id,
-            "filename": path.name,
-            "chunks": chunk_count,
+            "filename": filename,
+            "chunks": len(child_chunks),
             "status": "indexed",
+            "domain": domain,
         }
 
-    async def index_directory(self, directory: str) -> list[dict[str, Any]]:
+    async def index_directory(self, directory: str,
+                               domain: str) -> list[dict[str, Any]]:
         if not self._initialized:
-            raise RuntimeError("RAGEngine not initialized")
+            raise RuntimeError("HakeemRAGEngine not initialized")
 
         path = Path(directory)
         if not path.exists():
-            logger.warning(f"Directory not found: {directory}")
+            logger.warning("Directory not found: %s", directory)
             return []
 
+        sem = asyncio.Semaphore(4)
         results = []
+
+        async def _index_one(f: Path):
+            async with sem:
+                return await self.index_document(str(f), domain)
+
         for f in sorted(path.rglob("*")):
             if f.is_file() and f.suffix.lower() in _SUPPORTED_EXTENSIONS:
                 try:
-                    result = await self.index_document(str(f))
+                    result = await _index_one(f)
                     results.append(result)
+                    delay = self._settings.indexing_delay_ms / 1000
+                    if delay > 0:
+                        await asyncio.sleep(delay)
                 except Exception as e:
-                    logger.error(f"Failed to index {f}: {e}")
-        logger.info(f"Indexed {len(results)} files from {directory}")
+                    logger.error("Failed to index %s: %s", f, e)
+        logger.info("Indexed %d files from %s (domain=%s)",
+                     len(results), directory, domain)
         return results
 
-    async def index_if_changed(self, dirs: list[str]) -> int:
+    async def index_if_changed(self, dirs: dict[str, str]) -> int:
         if not self._initialized:
             return 0
 
-        loop = asyncio.get_event_loop()
-
-        def _get_existing():
-            all_data = self._collection.get(include=["metadatas"])
-            doc_mtimes: dict[str, float | None] = {}
-            for i, chunk_id in enumerate(all_data["ids"]):
-                meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
-                did = meta.get("doc_id", chunk_id)
-                if did not in doc_mtimes:
-                    doc_mtimes[did] = meta.get("mtime")
-            return doc_mtimes
-
-        existing_mtimes = await loop.run_in_executor(None, _get_existing)
-
         total_chunks = 0
+        for domain, directory in dirs.items():
+            if domain not in self._settings.domains:
+                logger.warning("Unknown domain '%s', skipping", domain)
+                continue
 
-        for d in dirs:
-            dpath = Path(d)
+            dpath = Path(directory)
             if not dpath.exists():
-                logger.warning(f"RAG: source directory not found: {d}")
+                logger.warning("Source directory not found: %s", directory)
                 continue
 
             for f in sorted(dpath.rglob("*")):
                 if not f.is_file() or f.suffix.lower() not in _SUPPORTED_EXTENSIONS:
                     continue
 
-                doc_id = f.stem
                 current_mtime = f.stat().st_mtime
-                stored_mtime = existing_mtimes.get(doc_id)
-                rel = str(f.resolve().relative_to(Path.cwd().resolve()))
-
-                if doc_id not in existing_mtimes:
-                    logger.info(f"RAG: {rel}: NEW -> indexing")
-                elif stored_mtime is None or current_mtime > stored_mtime:
-                    if stored_mtime is None:
-                        logger.info(f"RAG: {rel}: no stored mtime -> re-indexing")
-                    else:
-                        logger.info(
-                            f"RAG: {rel}: mtime CHANGED "
-                            f"({stored_mtime} -> {current_mtime}) -> re-indexing"
-                        )
-                else:
-                    logger.debug(f"RAG: {rel}: unchanged -> skipping")
+                cached = self._mtime_cache.get(str(f))
+                if cached is not None and current_mtime <= cached:
                     continue
 
-                result = await self.index_document(str(f), doc_id=doc_id)
+                result = await self.index_document(str(f), domain)
                 total_chunks += result.get("chunks", 0)
-                delay = self._settings.indexing_delay_ms / 1000
-                if delay > 0:
-                    await asyncio.sleep(delay)
+                self._mtime_cache[str(f)] = current_mtime
 
-        logger.info(
-            f"RAG: index_if_changed done, {total_chunks} chunks indexed"
-        )
+        logger.info("index_if_changed done: %d chunks indexed", total_chunks)
         return total_chunks
 
-    async def search(
-        self,
-        query: str,
-        top_k: Optional[int] = None,
-        min_score: Optional[float] = None,
-    ) -> list[dict[str, Any]]:
-        if not self._initialized:
-            return []
+    async def search(self, query: str,
+                     domain: Optional[str] = None) -> RAGResponse:
+        return await self.query(query)
 
-        top_k = top_k or self._settings.top_k
-        min_score = min_score or self._settings.min_score
-
-        loop = asyncio.get_event_loop()
-
-        def _search():
-            retriever = self._index.as_retriever(
-                similarity_top_k=top_k,
-            )
-            return retriever.retrieve(query)
-
-        raw = await loop.run_in_executor(None, _search)
-        if not raw:
-            return []
-
-        output = []
-        for item in raw:
-            similarity = item.score if item.score is not None else 0.0
-            if similarity < min_score:
-                continue
-            meta = item.node.metadata or {}
-            output.append(
-                {
-                    "chunk_id": item.node.node_id,
-                    "content": item.node.get_content(),
-                    "score": similarity,
-                    "source_file": meta.get("source_file", ""),
-                    "filename": meta.get("filename", ""),
-                }
-            )
-        return output
-
-    def format_context(self, results: list[dict[str, Any]]) -> str:
-        if not results:
-            return ""
-        sections = []
-        for r in results:
-            src = r.get("source_file", "unknown")
-            sections.append(f"[Source: {src}]\n{r.get('content', '')}")
-        return "\n\n---\n\n".join(sections)
-
-    async def delete_document(self, doc_id: str) -> bool:
-        if not self._initialized:
-            return False
-
-        loop = asyncio.get_event_loop()
-
-        def _delete():
-            existing = self._collection.get(where={"doc_id": doc_id})
-            if existing["ids"]:
-                self._collection.delete(ids=existing["ids"])
-                return True
-            return False
-
-        return await loop.run_in_executor(None, _delete)
+    async def delete_document(self, domain: str, doc_id: str) -> bool:
+        return await self._qdrant.delete_document(domain, doc_id)
 
     async def list_documents(self) -> list[dict[str, Any]]:
-        if not self._initialized:
-            return []
+        all_docs: list[dict] = []
+        for domain in self._settings.domains:
+            docs = await self._qdrant.list_documents(domain)
+            all_docs.extend(docs)
+        return all_docs
 
-        loop = asyncio.get_event_loop()
-
-        def _list():
-            all_data = self._collection.get(include=["metadatas"])
-            seen = {}
-            for i, chunk_id in enumerate(all_data["ids"]):
-                meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
-                did = meta.get("doc_id", chunk_id)
-                if did not in seen:
-                    seen[did] = {
-                        "id": did,
-                        "filename": meta.get("filename", ""),
-                        "chunks": 0,
-                    }
-                seen[did]["chunks"] += 1
-            return list(seen.values())
-
-        return await loop.run_in_executor(None, _list)
+    async def close(self):
+        if self._graph:
+            await self._graph.close()
 
 
-_engine: Optional[LlamaRAGEngine] = None
+_engine: Optional[HakeemRAGEngine] = None
 
 
-async def get_rag_engine() -> Optional[LlamaRAGEngine]:
+async def get_rag_engine() -> Optional[HakeemRAGEngine]:
     return _engine
 
 
-async def init_rag_engine(settings: RAGSettings) -> Optional[LlamaRAGEngine]:
+async def init_rag_engine(settings: HakeemRAGSettings) -> Optional[HakeemRAGEngine]:
     global _engine
     if not settings.enabled:
-        logger.info("RAG is disabled (RAG_ENABLED=false)")
+        logger.info("HakeemRAG is disabled")
         return None
-    engine = LlamaRAGEngine(settings)
+    engine = HakeemRAGEngine(settings)
     await engine.initialize()
     _engine = engine
     return engine

@@ -75,11 +75,29 @@ Hakeem is a **voice assistant backend** designed for a cluster of 3 Intel Atom c
 - **call_client_tool.py**: The cross-node remote tool bridge. `initiate_remote_call` generates a correlation UUID, stores in Redis `tool_corr:{id}`, publishes to `hakeem:ws_send:{node_id}`. `await_remote_response` uses Redis `BLPOP` on `tool_resp:{id}` to wait for the phone's response (no local futures). `handle_response` pushes the response to the BLPOP-able key.
 - **router.py**: `ToolRouter.route_tool_call(name, device_id)` — checks if internal → runs locally, checks if remote → checks permission → sends via bridge. Raises `UnknownToolError` if not found.
 
+### `rag/` — Medical RAG Pipeline (Hakeem MedRAG)
+
+The MedRAG pipeline provides domain-isolated, multi-hop, hallucination-resistant retrieval for medical queries. It runs alongside the main pipeline — LLM workers call `engine.query()` to retrieve context before generating responses.
+
+- **engine.py**: `HakeemRAGEngine` — orchestrator tying all 9 components. Entry points: `query()`, `index_document()`, `index_if_changed()`.
+- **hakeem_semantic_router.py**: `HakeemSemanticRouter` — MedBERT ONNX domain classifier + entity extraction. Routes queries to hepatology/nephrology/neurology.
+- **hakeem_qdrant_store.py**: `HakeemQdrantStore` — 3 domain-isolated Qdrant collections, hybrid dense + BM25 indexes, payload filters.
+- **hakeem_parent_retriever.py**: `HakeemParentRetriever` — small-to-big chunking (128→1024 word tokens), child→parent mapping.
+- **hakeem_knowledge_graph.py**: `HakeemKnowledgeGraph` — Neo4j async driver, entity index (Drug/Gene/Organ/Disease/Symptom/Procedure/Anatomy/Pathway), BFS traversal, GraphRAG formatting.
+- **hakeem_query_decomposer.py**: `HakeemQueryDecomposer` — splits complex queries into sub-questions via MedGemma.
+- **hakeem_hybrid_retriever.py**: `HakeemHybridRetriever` — fan-out across domains × sub-queries, RRF fusion.
+- **hakeem_reranker.py**: `HakeemReranker` — bge-reranker-v2-m3 ONNX cross-encoder, top-30→top-5.
+- **hakeem_corrective_rag.py**: `HakeemCorrectiveRAG` — LLM-based sufficiency check (YES/NO/PARTIAL), abstention on insufficient data.
+- **hakeem_citation.py**: `HakeemCitationFormatter` — `[Doc_ID:filename]` enforcement, GraphRAG context formatting.
+- **schemas.py**: Chunk, Document, Entity, GraphPath, ScoredChunk, RAGResponse, CRAGResult, DomainRoute.
+- **api.py**: FastAPI router under `/api/v1/rag/` — documents CRUD, search, reindex.
+- **downloader.py**: `download_onnx_model()` — downloads ONNX models for embedding, router, and reranker.
+
 ### `pipeline/` — STT → LLM → TTS
 
 - **workers/base.py**: `BaseWorker` with `xreadgroup` loop, max retries (3), exponential backoff (1s → 3s), ack-on-success.
 - **workers/stt_worker.py**: Reads `stt_jobs` stream → writes temp WAV → Whisper transcribes in thread → writes `llm_jobs` stream entry with transcript + metadata (language, confidence, duration).
-- **workers/llm_worker.py**: Reads `llm_jobs` → loads conversation history from Redis → sends to Groq API → tool loop (up to 5 iterations, parallel tool calls) → appends to history → writes `tts_jobs` with response text.
+- **workers/llm_worker.py**: Reads `llm_jobs` → loads conversation history from Redis → sends to Groq API → tool loop (up to 5 iterations, parallel tool calls) → appends to history → writes `tts_jobs` with response text. Optionally calls `engine.query()` for RAG context.
 - **workers/tts_worker.py**: Reads `tts_jobs` → Piper synthesizes in thread (with synthesis settings: volume, length_scale, etc.) → base64-encodes WAV → writes `responses` stream entry.
 - **workers/ws_sender.py**: Reads `responses` stream → checks if device is connected on this node via `get_active_connection(device_id)` → sends audio chunk via WebSocket. If device moved to another node, silently drops (future: pub/sub routing back to new node).
 - **orchestrator.py**: `WorkerManager` — creates all 4 workers, runs them as asyncio tasks, handles graceful shutdown.

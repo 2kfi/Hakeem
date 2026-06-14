@@ -57,10 +57,10 @@ async def chat(
     if body.rag:
         engine = await get_rag_engine()
         if engine and engine.is_initialized:
-            results = await engine.search(body.text)
-            if results:
-                rag_context = engine.format_context(results)
-                chunks = len(results)
+            rag_response = await engine.query(body.text)
+            if rag_response.sufficient and rag_response.formatted_context:
+                rag_context = rag_response.formatted_context
+                chunks = len(rag_response.chunks)
 
     response = await runner.run_query(
         device_id=auth.get("device_id", "chat"),

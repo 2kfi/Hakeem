@@ -35,6 +35,14 @@ services:
       RAG_EMBEDDING_MODEL: "${RAG_EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
       RAG_TOP_K: "${RAG_TOP_K:-3}"
       RAG_AUTO_INDEX_ON_START: "${RAG_AUTO_INDEX_ON_START:-true}"
+      MEDRAG_ENABLED: "${MEDRAG_ENABLED:-false}"
+      MEDRAG_QDRANT_HOST: "${MEDRAG_QDRANT_HOST:-localhost}"
+      MEDRAG_QDRANT_PORT: "6333"
+      MEDRAG_NEO4J_URI: "${MEDRAG_NEO4J_URI:-bolt://localhost:7687}"
+      MEDRAG_NEO4J_PASSWORD: "${NEO4J_PASSWORD:-}"
+      MEDRAG_LLM_API_BASE: "${MEDRAG_LLM_API_BASE:-http://10.1.1.180:2312/v1}"
+      MEDRAG_LLM_API_KEY: "${MEDRAG_LLM_API_KEY:-}"
+      MEDRAG_LLM_MODEL: "${MEDRAG_LLM_MODEL:-unsloth/gemma-4-E2B}"
     volumes:
       - ./models:/app/models
       - ./data:/app/data

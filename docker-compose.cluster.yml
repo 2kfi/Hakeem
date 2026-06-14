@@ -33,6 +33,33 @@ services:
     networks:
       - hakeem-cluster
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: hakeem-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - hakeem-cluster
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: hakeem-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-changeMe}
+      - NEO4J_PLUGINS=["apoc"]
+    restart: unless-stopped
+    networks:
+      - hakeem-cluster
+
   hakeem-node-1:
     build: .
     image: hakeem-backend:latest
@@ -52,16 +79,24 @@ services:
       PIPELINE_LLM_WORKERS: "${PIPELINE_LLM_WORKERS:-1}"
       PIPELINE_TTS_WORKERS: "${PIPELINE_TTS_WORKERS:-1}"
       PIPELINE_WS_WORKERS: "${PIPELINE_WS_WORKERS:-1}"
-      RAG_ENABLED: "${RAG_ENABLED:-false}"
-      RAG_EMBEDDING_MODEL: "${RAG_EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
-      RAG_TOP_K: "${RAG_TOP_K:-3}"
-      RAG_AUTO_INDEX_ON_START: "${RAG_AUTO_INDEX_ON_START:-true}"
+      MEDRAG_ENABLED: "${MEDRAG_ENABLED:-false}"
+      MEDRAG_QDRANT_HOST: "${MEDRAG_QDRANT_HOST:-qdrant}"
+      MEDRAG_QDRANT_PORT: "6333"
+      MEDRAG_NEO4J_URI: "${MEDRAG_NEO4J_URI:-bolt://neo4j:7687}"
+      MEDRAG_NEO4J_PASSWORD: "${NEO4J_PASSWORD:-}"
+      MEDRAG_LLM_API_BASE: "${MEDRAG_LLM_API_BASE:-https://api.groq.com/openai/v1}"
+      MEDRAG_LLM_API_KEY: "${MEDRAG_LLM_API_KEY:-}"
+      MEDRAG_LLM_MODEL: "${MEDRAG_LLM_MODEL:-llama-3.3-70b-versatile}"
     volumes:
       - ./models:/app/models
       - ./data:/app/data
     depends_on:
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
     restart: unless-stopped
     networks:
       - hakeem-cluster
@@ -85,11 +120,23 @@ services:
       PIPELINE_LLM_WORKERS: "${PIPELINE_LLM_WORKERS:-1}"
       PIPELINE_TTS_WORKERS: "${PIPELINE_TTS_WORKERS:-1}"
       PIPELINE_WS_WORKERS: "${PIPELINE_WS_WORKERS:-1}"
+      MEDRAG_ENABLED: "${MEDRAG_ENABLED:-false}"
+      MEDRAG_QDRANT_HOST: "${MEDRAG_QDRANT_HOST:-qdrant}"
+      MEDRAG_QDRANT_PORT: "6333"
+      MEDRAG_NEO4J_URI: "${MEDRAG_NEO4J_URI:-bolt://neo4j:7687}"
+      MEDRAG_NEO4J_PASSWORD: "${NEO4J_PASSWORD:-}"
+      MEDRAG_LLM_API_BASE: "${MEDRAG_LLM_API_BASE:-https://api.groq.com/openai/v1}"
+      MEDRAG_LLM_API_KEY: "${MEDRAG_LLM_API_KEY:-}"
+      MEDRAG_LLM_MODEL: "${MEDRAG_LLM_MODEL:-llama-3.3-70b-versatile}"
     volumes:
       - ./models:/app/models
     depends_on:
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
     restart: unless-stopped
     networks:
       - hakeem-cluster
@@ -113,17 +160,31 @@ services:
       PIPELINE_LLM_WORKERS: "${PIPELINE_LLM_WORKERS:-1}"
       PIPELINE_TTS_WORKERS: "${PIPELINE_TTS_WORKERS:-1}"
       PIPELINE_WS_WORKERS: "${PIPELINE_WS_WORKERS:-1}"
+      MEDRAG_ENABLED: "${MEDRAG_ENABLED:-false}"
+      MEDRAG_QDRANT_HOST: "${MEDRAG_QDRANT_HOST:-qdrant}"
+      MEDRAG_QDRANT_PORT: "6333"
+      MEDRAG_NEO4J_URI: "${MEDRAG_NEO4J_URI:-bolt://neo4j:7687}"
+      MEDRAG_NEO4J_PASSWORD: "${NEO4J_PASSWORD:-}"
+      MEDRAG_LLM_API_BASE: "${MEDRAG_LLM_API_BASE:-https://api.groq.com/openai/v1}"
+      MEDRAG_LLM_API_KEY: "${MEDRAG_LLM_API_KEY:-}"
+      MEDRAG_LLM_MODEL: "${MEDRAG_LLM_MODEL:-llama-3.3-70b-versatile}"
     volumes:
       - ./models:/app/models
     depends_on:
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
     restart: unless-stopped
     networks:
       - hakeem-cluster
 
 volumes:
   redis-data:
+  qdrant-data:
+  neo4j-data:
 
 networks:
   hakeem-cluster:

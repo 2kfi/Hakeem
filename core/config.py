@@ -6,6 +6,61 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettin
 from typing import Any, Optional
 
 
+class HakeemRAGSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MEDRAG_")
+
+    enabled: bool = False
+
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_api_key: str = ""
+
+    collection_name_prefix: str = "hakeem"
+    vector_size: int = 384
+
+    domains: list[str] = ["hepatology", "nephrology", "neurology"]
+    domain_source_dirs: dict[str, str] = {}
+
+    router_model_path: str = "./models/medical_router"
+    router_threshold: float = 0.6
+
+    child_chunk_size: int = 128
+    child_chunk_overlap: int = 16
+    parent_chunk_size: int = 1024
+    parent_chunk_overlap: int = 64
+
+    hybrid_top_k: int = 30
+    reranker_top_k: int = 5
+    rrf_k: int = 60
+
+    reranker_model_path: str = "./models/bge_reranker"
+    reranker_device: str = "auto"
+
+    decomposer_enabled: bool = True
+    decomposer_num_queries: int = 3
+
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    graph_traversal_depth: int = 2
+
+    crag_enabled: bool = True
+
+    llm_api_base: str = "http://10.1.1.180:2312/v1"
+    llm_api_key: str = ""
+    llm_model: str = "unsloth/gemma-4-E2B"
+
+    evaluate_hallucinations: bool = False
+    evaluation_max_retries: int = 1
+
+    model_dir: str = "./models/chroma"
+    device: str = "auto"
+    indexing_batch_size: int = 16
+    indexing_delay_ms: int = 100
+    auto_index_on_start: bool = True
+
+
+
 class RedisSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="REDIS_")
 
@@ -197,6 +252,7 @@ class _NestedEnvSource:
             "cluster": "CLUSTER_",
             "auth": "AUTH_",
             "rag": "RAG_",
+            "medrag": "MEDRAG_",
             "models": "MODEL_",
         }
         for field_name, prefix in nested_prefixes.items():
@@ -263,6 +319,7 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     rag: RAGSettings = Field(default_factory=RAGSettings)
+    medrag: HakeemRAGSettings = Field(default_factory=HakeemRAGSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
 
 

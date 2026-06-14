@@ -1,0 +1,52 @@
+# Arkan Fakoseh -  @2kfi on github
+# =============================================================================
+# Hakeem Backend — Application Service (connects to shared infrastructure)
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.app.yml up -d
+#   docker compose -f docker-compose.app.yml up -d --scale hakeem=3
+#
+# Combined with infra:
+#   docker compose -f docker-compose.infra.yml -f docker-compose.app.yml up -d
+# =============================================================================
+
+version: "3.8"
+
+services:
+  hakeem:
+    build: .
+    image: hakeem-backend:latest
+    container_name: hakeem-node-${CLUSTER_NODE_ID:-1}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-hakeem_pass}@redis:6379/0"
+      MEDRAG_ENABLED: "${MEDRAG_ENABLED:-false}"
+      MEDRAG_QDRANT_HOST: "${MEDRAG_QDRANT_HOST:-qdrant}"
+      MEDRAG_QDRANT_PORT: "6333"
+      MEDRAG_NEO4J_URI: "${MEDRAG_NEO4J_URI:-bolt://neo4j:7687}"
+      MEDRAG_NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      MEDRAG_LLM_API_BASE: "${MEDRAG_LLM_API_BASE:-http://10.1.1.180:2312/v1}"
+      MEDRAG_LLM_API_KEY: "${MEDRAG_LLM_API_KEY:-}"
+      MEDRAG_LLM_MODEL: "${MEDRAG_LLM_MODEL:-unsloth/gemma-4-E2B}"
+      JWT_SECRET: "${JWT_SECRET}"
+      LLM_API_KEY: "${LLM_API_KEY}"
+      LLM_MODEL: "${LLM_MODEL:-llama-3.3-70b-versatile}"
+      CLUSTER_NODE_ID: "${CLUSTER_NODE_ID:-1}"
+      STT_DEVICE: "${STT_DEVICE:-auto}"
+      STT_MODEL_NAME: "${STT_MODEL_NAME:-medium}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      DEBUG: "${DEBUG:-false}"
+      MODEL_DOWNLOAD: "${MODEL_DOWNLOAD:-false}"
+      PIPELINE_STT_WORKERS: "${PIPELINE_STT_WORKERS:-1}"
+      PIPELINE_LLM_WORKERS: "${PIPELINE_LLM_WORKERS:-1}"
+      PIPELINE_TTS_WORKERS: "${PIPELINE_TTS_WORKERS:-1}"
+      PIPELINE_WS_WORKERS: "${PIPELINE_WS_WORKERS:-1}"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./docs:/app/docs
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped

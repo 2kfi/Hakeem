@@ -23,9 +23,9 @@ async def _get_rag_context(user_message: str) -> Optional[str]:
         from rag.engine import get_rag_engine
         engine = await get_rag_engine()
         if engine and engine.is_initialized:
-            results = await engine.search(user_message)
-            if results:
-                return engine.format_context(results)
+            response = await engine.query(user_message)
+            if response.sufficient and response.formatted_context:
+                return response.formatted_context
     except Exception as e:
         logger.warning(f"RAG retrieval failed: {e}")
     return None
@@ -38,9 +38,19 @@ async def _get_rag_context_as_list(
         from rag.engine import get_rag_engine
         engine = await get_rag_engine()
         if engine and engine.is_initialized:
-            results = await engine.search(user_message)
-            if results:
-                return results
+            response = await engine.query(user_message)
+            if response.sufficient:
+                return [
+                    {
+                        "chunk_id": c.chunk_id,
+                        "content": c.content,
+                        "score": c.score,
+                        "source_file": c.source_file,
+                        "filename": c.filename,
+                        "domain": c.domain,
+                    }
+                    for c in response.chunks
+                ]
     except Exception as e:
         logger.warning(f"RAG retrieval failed: {e}")
     return []

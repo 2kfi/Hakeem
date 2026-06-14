@@ -46,8 +46,8 @@ COPY rag/ rag/
 COPY app.py .
 COPY config.yaml .
 
-# ─── Vector store persistence ──────────────────────────────────────────────
-RUN mkdir -p /app/data/vector_store
+# ─── Qdrant storage (shared volume) ────────────────────────────────────────
+RUN mkdir -p /app/data/qdrant
 
 # ─── Expose ────────────────────────────────────────────────────────────────
 EXPOSE 8080

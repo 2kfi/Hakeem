@@ -2597,6 +2597,177 @@ Yes, ONNX format. Specifically a BERT-style embedding model with 3 inputs (`inpu
 
 ---
 
+## 23.5. Medical RAG (MedRAG) — Domain-Isolated, Multi-Hop Retrieval
+
+The old RAG pipeline (Section 23) works great for general docs. But medical queries need stronger guarantees:
+
+- **Domain isolation**: A hepatology doc should never answer a neurology question
+- **Multi-hop reasoning**: "What drugs treat cirrhosis complications in CKD patients?" spans 2 domains
+- **Entity-aware retrieval**: Find "Rifaximin" in the knowledge graph, not just by keyword
+- **Citation enforcement**: Every clinical claim must cite a source
+- **Abstention**: "I don't know" is better than hallucination
+
+### The MedRAG Pipeline
+
+```
+User Query
+    │
+    ▼
+Semantic Router (MedBERT ONNX)
+    │  Classifies query → "hepatology"
+    │  Extracts entities → ["Rifaximin", "cirrhosis"]
+    ▼
+Query Decomposer (MedGemma)
+    │  "What are contraindications of rifaximin?"
+    │  → "What is rifaximin used for?"
+    │  → "What are rifaximin's contraindications?"
+    │  → "Which patient populations should avoid rifaximin?"
+    ▼
+Hybrid Retriever (Qdrant)
+    │  Runs 3 sub-queries × 1 domain = 3 searches
+    │  Each: dense embedding + BM25 keyword
+    │  RRF fusion merges results
+    ▼
+Parent Resolver
+    │  child chunks (128 tokens) → parent chunks (1024 tokens)
+    ▼
+Cross-Encoder Reranker (bge-reranker-v2-m3 ONNX)
+    │  Re-scores top-30 → keeps top-5
+    ▼
+Knowledge Graph (Neo4j) ──── GraphRAG formatting
+    │  BFS traversal from entities
+    │  "Rifaximin --[METABOLIZED_BY]--> Liver"
+    ▼
+Corrective RAG (CRAG)
+    │  LLM checks: "Does this context answer the question?"
+    │  YES → proceed
+    │  PARTIAL → proceed (marked as partial)
+    │  NO → abstain
+    ▼
+Citation Formatter
+    [Doc_ID:he_guidelines_2023] (source: he_guidelines.pdf)
+    Rifaximin is contraindicated in hypersensitivity...
+    │
+    ▼
+Response to LLM
+```
+
+### Key Differences From Old RAG
+
+| Feature | Old RAG | MedRAG |
+|---------|---------|--------|
+| Vector DB | ChromaDB (embedded) | Qdrant (server, shared across nodes) |
+| Search | Dense only | Hybrid dense + BM25 |
+| Chunking | Single-level (512 chars) | Parent-child (128→1024 word tokens) |
+| Domain isolation | None (flat index) | 3 isolated collections |
+| Entity extraction | None | MedBERT + KG integration |
+| Query decomposition | None | MedGemma, 3 sub-queries |
+| Reranking | None | Cross-encoder ONNX |
+| Knowledge Graph | None | Neo4j, 8 entity types |
+| Citation enforcement | None | [Doc_ID:filename] required |
+| Abstention | None | CRAG verification |
+
+### Requirements
+
+MedRAG needs two additional services:
+
+1. **Qdrant** — vector database (run as a shared server so all cluster nodes see the same data)
+2. **Neo4j** — knowledge graph (required — engine hard-fails if unavailable)
+
+Start them:
+```bash
+docker compose -f docker-compose.infra.yml up -d qdrant neo4j
+```
+
+### Configuration
+
+```yaml
+medrag:
+  enabled: true
+  domains:
+    - hepatology
+    - nephrology
+    - neurology
+  domain_source_dirs:
+    hepatology: "./data/med_docs/hepatology"
+    nephrology: "./data/med_docs/nephrology"
+    neurology: "./data/med_docs/neurology"
+  qdrant_host: "localhost"
+  qdrant_port: 6333
+  neo4j_uri: "bolt://localhost:7687"
+  neo4j_user: "neo4j"
+  neo4j_password: "your-password"
+  llm_api_base: "http://10.1.1.180:2312/v1"
+  llm_model: "unsloth/gemma-4-E2B"
+```
+
+Set env vars (override any config.yaml field):
+```bash
+export MEDRAG_ENABLED=true
+export MEDRAG_NEO4J_PASSWORD="your-password"
+export MEDRAG_QDRANT_HOST="10.1.1.50"
+```
+
+### API Endpoints
+
+All under `/api/v1/rag/`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/documents` | List indexed documents (optional `?domain=hepatology`) |
+| `POST` | `/documents/upload?domain=X` | Upload a document to a domain |
+| `DELETE` | `/documents/{doc_id}?domain=X` | Delete a document |
+| `GET` | `/documents/search?q=...` | Search across all domains (returns citations + sufficiency) |
+| `POST` | `/documents/reindex` | Scan source dirs for changes, re-index modified files |
+
+### Knowledge Graph Entity Types
+
+| Type | Example |
+|------|---------|
+| Drug | Rifaximin, Lactulose |
+| Gene | HFE, SERPINA1 |
+| Organ | Liver, Kidney |
+| Disease | Cirrhosis, CKD |
+| Symptom | Jaundice, Ascites |
+| Procedure | Dialysis, Transplant |
+| Anatomy | Portal Vein, Glomerulus |
+| Pathway | Renin-Angiotensin, Urea Cycle |
+
+### ONNX Models Downloaded on Startup
+
+| Model | Source | Size | Purpose |
+|-------|--------|------|---------|
+| all-MiniLM-L6-v2 | `models/chroma/onnx/` | 90 MB | Text embeddings |
+| MedBERT classifier | `models/medical_router/` | ~100 MB | Domain routing |
+| bge-reranker-v2-m3 | `models/bge_reranker/` | ~200 MB | Cross-encoder reranking |
+
+All three download automatically on startup via `scripts/downloader.py`.
+
+### Files
+
+```
+rag/
+  engine.py                    HakeemRAGEngine orchestrator
+  hakeem_semantic_router.py    MedBERT domain classifier
+  hakeem_qdrant_store.py       Qdrant client (3 collections)
+  hakeem_parent_retriever.py   Small-to-big chunking
+  hakeem_knowledge_graph.py    Neo4j driver + entity index
+  hakeem_query_decomposer.py   MedGemma sub-query generation
+  hakeem_hybrid_retriever.py   Fan-out + RRF fusion
+  hakeem_reranker.py           bge-reranker-v2-m3 cross-encoder
+  hakeem_corrective_rag.py     LLM sufficiency verification
+  hakeem_citation.py           [Doc_ID:filename] enforcement
+  schemas.py                   Pydantic models
+  api.py                       FastAPI router
+  download.py                  ONNX model download helpers
+
+core/config.py                 HakeemRAGSettings (prefix MEDRAG_)
+pipeline/llm_runner.py         _get_rag_context() adapter
+api/chat.py                    Chat uses engine.query()
+```
+
+---
+
 ## 24. Even More FAQ
 
 ### Q17: I got "tool_use_failed" from Groq. What's that?
