@@ -26,6 +26,12 @@ api:
   rate_limit: "${RATE_LIMIT:-60/minute}"
   max_audio_size_mb: ${MAX_AUDIO_SIZE_MB:-10}
 
+proxy:
+  enabled: ${PROXY_ENABLED:-false}
+  trusted_proxies: ["${PROXY_TRUSTED_PROXIES:-127.0.0.1}"]
+  forwarded_allow_ips: ["${PROXY_FORWARDED_ALLOW_IPS:-127.0.0.1}"]
+  num_proxies: ${PROXY_NUM_PROXIES:-1}
+
 redis:
   url: "${REDIS_URL:-}"
   host: "${REDIS_HOST:-localhost}"

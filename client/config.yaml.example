@@ -1,0 +1,45 @@
+# Hakeem CLI Client — Configuration
+# ===================================
+# Copy to client/config.yaml and edit for your setup.
+# 
+# Run the client:
+#   python client/cli.py
+#   python client/cli.py --framework onnx
+#   python client/cli.py --list-models
+
+client:
+  # ── Backend connection ──────────────────────────────────
+  # Where is the Hakeem backend running?
+  backend_host: "localhost"
+  backend_port: 8080
+  backend_tls: false                 # true if behind HTTPS/WSS
+
+  # ── Authentication ─────────────────────────────────────
+  # Either set jwt_secret (auto-generates tokens)
+  # or set jwt_token (pre-generated, skips signing)
+  jwt_secret: "CHANGE_ME_JWT_SECRET"
+  jwt_token: ""                      # optional, overrides jwt_secret
+
+  # ── Device identity ────────────────────────────────────
+  device_id: "hakeem-cli"
+  user_id: "cli-user"
+
+  # ── Wake word models ───────────────────────────────────
+  # Paths to openwakeword model files (.onnx or .tflite).
+  # Leave empty to auto-discover models/ directory.
+  # wake_models:
+  #   - models/Hakeem/Hakeem.onnx
+  #   - models/WW-EYE-STRA/EYE-STRA.onnx
+
+  # ── Inference ──────────────────────────────────────────
+  inference_framework: "onnx"        # "onnx" or "tflite"
+  chunk_size: 1280                   # samples per inference frame
+  sample_rate: 16000                 # microphone sample rate (Hz)
+
+  # ── Recording ──────────────────────────────────────────
+  silence_threshold: 0.01            # energy below this = silence
+  max_record_seconds: 10             # max recording length
+  min_audio_chunks: 20               # minimum chunks to send
+
+  # ── Wake word sensitivity ──────────────────────────────
+  wakeword_threshold: 0.5            # 0.0-1.0 (lower = more sensitive)

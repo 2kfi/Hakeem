@@ -1,3 +1,7 @@
+# Generated secrets (scripts/generate_secrets.py outputs)
+config.yaml
+.env
+
 # Python
 __pycache__/
 *.py[cod]

@@ -75,6 +75,15 @@ class RedisSettings(BaseSettings):
     health_check_interval: int = 30
 
 
+class ProxySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PROXY_")
+
+    enabled: bool = False
+    trusted_proxies: list[str] = ["127.0.0.1"]
+    forwarded_allow_ips: list[str] = ["127.0.0.1"]
+    num_proxies: int = 1
+
+
 class STTSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="STT_")
 
@@ -242,6 +251,7 @@ class _NestedEnvSource:
         nested_prefixes = {
             "pipeline": "PIPELINE_",
             "redis": "REDIS_",
+            "proxy": "PROXY_",
             "jwt": "JWT_",
             "llm": "LLM_",
             "mcp": "MCP_",
@@ -303,6 +313,7 @@ class Settings(BaseSettings):
     debug: bool = False
     cors_origins: list[str] = ["*"]
     rate_limit: str = "60/minute"
+    proxy: ProxySettings = Field(default_factory=ProxySettings)
     max_audio_size_mb: int = 10
     ws_max_size: int = 10485760
     allowed_audio_types: list[str] = ["audio/wav", "audio/mpeg", "audio/ogg"]

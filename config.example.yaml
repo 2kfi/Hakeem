@@ -21,6 +21,16 @@ api:
     - "audio/ogg"
 
 # ─────────────────────────────────────────────────
+# PROXY — reverse proxy support (optional)
+# Enable when running behind nginx, haproxy, or similar.
+# ─────────────────────────────────────────────────
+# proxy:
+#   enabled: true                        # enable proxy mode
+#   trusted_proxies: ["127.0.0.1"]       # IPs trusted to send X-Forwarded-For
+#   forwarded_allow_ips: ["127.0.0.1"]   # uvicorn --forwarded-allow-ips
+#   num_proxies: 1                       # number of proxy layers
+
+# ─────────────────────────────────────────────────
 # REDIS — shared state, pub/sub, job queues
 # ─────────────────────────────────────────────────
 redis:

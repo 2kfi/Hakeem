@@ -1,7 +1,22 @@
 <!-- Arkan Fakoseh -  @2kfi on github -->
 # Authentication
 
-## Quick Start — Disable Auth for Local Dev
+## Quick Start — Generate a JWT
+
+```bash
+# Generate secrets (includes JWT_SECRET):
+python scripts/generate_secrets.py --random
+
+# Create a token:
+python -c "
+from core.jwt_auth import get_jwt_manager
+print(get_jwt_manager().create_token('admin', 'phone-01', ['admin']))
+"
+```
+
+Or set `DEBUG=true` and the entrypoint prints an admin JWT on startup.
+
+## Disable Auth for Local Dev
 
 ```bash
 python3 app.py --no-auth

@@ -258,11 +258,17 @@ if __name__ == "__main__":
         logger.warning("Auth is DISABLED (--no-auth)")
 
     import uvicorn
-    uvicorn.run(
-        app,
-        host=settings.api_host,
-        port=settings.api_port,
-        log_level="debug" if settings.debug else "info",
-        ws_ping_interval=None,
-        ws_max_size=settings.ws_max_size,
-    )
+
+    uvicorn_kwargs = {
+        "host": settings.api_host,
+        "port": settings.api_port,
+        "log_level": "debug" if settings.debug else "info",
+        "ws_ping_interval": None,
+        "ws_max_size": settings.ws_max_size,
+    }
+
+    if settings.proxy.enabled:
+        uvicorn_kwargs["proxy_headers"] = True
+        uvicorn_kwargs["forwarded_allow_ips"] = ",".join(settings.proxy.forwarded_allow_ips)
+
+    uvicorn.run(app, **uvicorn_kwargs)

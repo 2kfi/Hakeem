@@ -17,12 +17,20 @@ git clone <repo> hakeem
 cd hakeem
 ```
 
-### 1.2 Set required env vars
+### 1.2 Generate secrets
 
 ```bash
-export JWT_SECRET="$(openssl rand -hex 32)"
-export LLM_API_KEY="gsk_your-groq-key-here"
+# Auto-generate JWT secret + DB password (Redis/Neo4j/Qdrant share one password):
+python scripts/generate_secrets.py --random
+
+# Or go interactive:
+python scripts/generate_secrets.py
+
+# Then set your LLM API key:
+echo 'LLM_API_KEY="gsk_your-groq-key-here"' >> .env
 ```
+
+This writes a `.env` file and `config.yaml` with consistent, cryptographically secure secrets. Both files are in `.gitignore` and won't be committed.
 
 Optional — enable MedRAG with Neo4j:
 

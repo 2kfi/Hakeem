@@ -7,6 +7,18 @@
 - At least 4GB RAM per node (for Whisper + Piper models)
 - Redis 7+ (provided by Docker)
 
+## First-time setup
+
+```bash
+# Generate secure secrets (JWT + DB password for Redis/Neo4j/Qdrant):
+python scripts/generate_secrets.py --random
+
+# Set your LLM API key:
+echo 'LLM_API_KEY="gsk_your_key"' >> .env
+```
+
+> This writes `.env` and `config.yaml` with cryptographically random secrets. Both are gitignored.
+
 ## Docker Compose Files
 
 | File | What It Starts | Best For |

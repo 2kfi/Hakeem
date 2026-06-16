@@ -3,6 +3,8 @@
 
 Settings are loaded from `config.yaml`. Every value can be overridden via environment variables.
 
+> 🔐 **Quick setup:** Run `python scripts/generate_secrets.py --random` to generate a secure `config.yaml` and `.env` with cryptographically random secrets (JWT key, DB password for Redis/Neo4j/Qdrant).
+
 **Priority (highest to lowest):** CLI args > env vars > `config.yaml` > code defaults
 
 **Env var naming:**
@@ -23,6 +25,21 @@ Settings are loaded from `config.yaml`. Every value can be overridden via enviro
 | `rate_limit` | `API_RATE_LIMIT` | string | `"60/minute"` | Max requests per minute per IP |
 | `max_audio_size_mb` | `API_MAX_AUDIO_SIZE_MB` | int | `10` | Reject audio uploads larger than this (MB) |
 | `allowed_audio_types` | — | list | `["audio/wav", "audio/mpeg", "audio/ogg"]` | Accepted Content-Type values for audio |
+
+---
+
+## `proxy` — Reverse proxy support (prefix: `PROXY_`)
+
+Enable when running behind nginx, haproxy, caddy, or similar.
+
+| Field | Env Var | Type | Default | Description |
+|-------|---------|------|---------|-------------|
+| `enabled` | `PROXY_ENABLED` | bool | `false` | Enable proxy mode (forwarded-IP headers) |
+| `trusted_proxies` | `PROXY_TRUSTED_PROXIES` | list | `["127.0.0.1"]` | IPs trusted to send `X-Forwarded-For` |
+| `forwarded_allow_ips` | `PROXY_FORWARDED_ALLOW_IPS` | list | `["127.0.0.1"]` | Passed to uvicorn `--forwarded-allow-ips` |
+| `num_proxies` | `PROXY_NUM_PROXIES` | int | `1` | Number of proxy layers |
+
+When `enabled: true`, uvicorn runs with `proxy-headers` and `forwarded-allow-ips`, so rate limiting and logging see real client IPs instead of the proxy's IP.
 
 ---
 
