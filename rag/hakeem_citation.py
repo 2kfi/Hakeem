@@ -64,6 +64,10 @@ class HakeemCitationFormatter:
             c.doc_id for c in chunks[:5] if c.doc_id
         ))
 
+        logger.info("Building RAG response: %d chunks, %d graph paths, %d citations, status=%s, sufficient=%s",
+                     len(chunks), len(graph_paths or []), len(citations),
+                     verification_status, sufficient)
+
         return RAGResponse(
             context="\n\n".join(c.content for c in chunks[:5]),
             formatted_context=formatted,

@@ -41,5 +41,8 @@ client:
   max_record_seconds: 10             # max recording length
   min_audio_chunks: 20               # minimum chunks to send
 
+  # ── Backend response timeout ───────────────────────────
+  response_timeout: 120              # seconds to wait for backend reply
+
   # ── Wake word sensitivity ──────────────────────────────
   wakeword_threshold: 0.5            # 0.0-1.0 (lower = more sensitive)

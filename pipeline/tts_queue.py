@@ -1,9 +1,9 @@
-# Arkan Fakoseh -  @2kfi on github
 import asyncio
 import base64
 import logging
 import os
 import tempfile
+import time
 import wave
 
 from core.app_state import get_app_state
@@ -11,6 +11,8 @@ from core.config import get_settings
 from core.redis_manager import RedisManager
 
 logger = logging.getLogger(__name__)
+
+TTS_SYNTHESIS_TIMEOUT = 60.0
 
 
 class TTSQueue:
@@ -22,7 +24,8 @@ class TTSQueue:
     async def enqueue(self, device_id: str, text: str, language: str = None, priority: int = 0) -> int:
         loop = asyncio.get_running_loop()
         score = loop.time() + priority
-        return await self.redis.zadd(self._queue_key, {f"{device_id}:{text[:50]}": score})
+        unique_id = f"{time.time_ns()}"
+        return await self.redis.zadd(self._queue_key, {f"{device_id}:{text[:50]}:{unique_id}": score})
 
     async def dequeue(self, count: int = 1) -> list[tuple[str, str]]:
         items = await self.redis.zrange(self._queue_key, 0, count - 1, withscores=True)
@@ -48,11 +51,17 @@ class TTSQueue:
             output_file = tmp.name
         try:
             if syn_config:
-                await asyncio.to_thread(
-                    lambda: voice.synthesize_wav(text, wave.open(output_file, "wb"), syn_config=syn_config)
+                await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: voice.synthesize_wav(text, wave.open(output_file, "wb"), syn_config=syn_config)
+                    ),
+                    timeout=TTS_SYNTHESIS_TIMEOUT,
                 )
             else:
-                await asyncio.to_thread(voice.execute, text, output_file)
+                await asyncio.wait_for(
+                    asyncio.to_thread(voice.execute, text, output_file),
+                    timeout=TTS_SYNTHESIS_TIMEOUT,
+                )
             with open(output_file, "rb") as f:
                 audio_data = f.read()
             return audio_data

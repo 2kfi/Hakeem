@@ -26,12 +26,11 @@ class ConversationStore:
     async def add_message(self, device_id: str, role: MessageRole, content: str, tool_call_id: Optional[str] = None, tool_name: Optional[str] = None) -> int:
         msg = Message(role=role, content=content, tool_call_id=tool_call_id, tool_name=tool_name)
         msg_json = msg.model_dump_json()
-        length = await self.redis.rpush(self._key(device_id), msg_json)
-        current_len = await self.redis.client.llen(self._key(device_id))
-        if current_len > self._settings.session.max_history:
-            trim_start = max(0, current_len - self._settings.session.max_history)
+        new_len = await self.redis.rpush(self._key(device_id), msg_json)
+        if new_len > self._settings.session.max_history:
+            trim_start = new_len - self._settings.session.max_history
             await self.redis.ltrim(self._key(device_id), trim_start, -1)
-        return length
+        return new_len
 
     async def get_history(self, device_id: str, limit: Optional[int] = None) -> list[Message]:
         max_len = limit or self._settings.session.max_history

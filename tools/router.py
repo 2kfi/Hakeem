@@ -66,23 +66,26 @@ async def route_tool_call(
                 duration_ms=0,
             )
         
-        logger.info(f"Routing remote tool: {tool_name} to device {device_id}")
+        target_device = registry.get_remote_owner(tool_name) or device_id
+        logger.info(f"Routing remote tool: {tool_name} to device {target_device}")
         bridge = await get_tool_bridge()
         record = await bridge.initiate_remote_call(
-            device_id=device_id,
+            device_id=target_device,
             tool_name=tool_name,
             params=params,
             session_id=session_id,
             timeout=settings.tool.remote_timeout,
         )
         result = await bridge.await_remote_response(record.correlation_id, timeout=settings.tool.remote_timeout)
-        if "error" in result:
+        if isinstance(result, dict) and "error" in result:
             return ToolCallResult(
                 tool_name=tool_name,
                 success=False,
                 error=result["error"],
                 duration_ms=0,
             )
+        if isinstance(result, dict) and result.get("result") is not None:
+            result = result["result"]
         return ToolCallResult(tool_name=tool_name, success=True, result=result, duration_ms=0)
 
     else:

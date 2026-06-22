@@ -106,7 +106,7 @@ class ToolBridge:
     async def handle_response(self, correlation_id: str, result: Any, error: Optional[str] = None) -> None:
         resp_key = self._resp_key(correlation_id)
         corr_key = self._corr_key(correlation_id)
-        payload = result if error is None else {"error": error, "result": result}
+        payload = {"result": result} if error is None else {"error": error, "result": result}
         await self.redis.rpush(resp_key, payload)
         await self.redis.expire(resp_key, 60)
         await self.redis.delete(corr_key)

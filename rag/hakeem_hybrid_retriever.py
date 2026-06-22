@@ -25,6 +25,7 @@ class HakeemHybridRetriever:
                      top_k: Optional[int] = None) -> list[ScoredChunk]:
         k = top_k or self._top_k
         all_result_lists: list[list[ScoredChunk]] = []
+        n_queries = len(query_embeddings) if query_embeddings else len(sub_queries or [query])
 
         if query_embeddings:
             for sq, dv, sv in query_embeddings:
@@ -51,9 +52,12 @@ class HakeemHybridRetriever:
                         all_result_lists.append(results)
 
         if not all_result_lists:
+            logger.info("Hybrid search returned no results for %d domains x %d queries", len(domains), n_queries)
             return []
 
+        logger.info("Hybrid search: %d domains x %d queries -> %d raw result lists", len(domains), n_queries, len(all_result_lists))
         fused = self._reciprocal_rank_fusion(all_result_lists)
+        logger.info("RRF fused %d lists into %d results (top_k=%d)", len(all_result_lists), len(fused), k)
         return fused[:k]
 
     def _reciprocal_rank_fusion(self,

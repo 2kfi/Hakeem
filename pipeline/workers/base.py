@@ -1,12 +1,17 @@
-# Arkan Fakoseh -  @2kfi on github
 import asyncio
+import json
 import logging
+import time
 from typing import Any, Callable, Optional
 
 from core.config import get_settings
 from core.redis_manager import RedisManager
 
 logger = logging.getLogger(__name__)
+
+RETRY_COUNTER_PREFIX = "worker_retry:"
+RETRY_COUNTER_TTL = 3600
+DLQ_STREAM_SUFFIX = "_dlq"
 
 
 class BaseWorker:
@@ -31,7 +36,39 @@ class BaseWorker:
         self.max_retries = max_retries
         self.target_stream = target_stream
         self.backoff_base = backoff_base
+        self.dlq_stream = stream + DLQ_STREAM_SUFFIX
         self._running = False
+        self._epoch = time.time()
+
+    def _retry_key(self, msg_id: str) -> str:
+        return f"{RETRY_COUNTER_PREFIX}{self.stream}:{self._epoch}:{msg_id}"
+
+    async def _get_retry_count(self, msg_id: str) -> int:
+        raw = await self.redis.get(self._retry_key(msg_id))
+        return int(raw) if raw else 0
+
+    async def _increment_retry_count(self, msg_id: str) -> int:
+        key = self._retry_key(msg_id)
+        count = await self.redis.client.incr(key)
+        await self.redis.client.expire(key, RETRY_COUNTER_TTL)
+        return count
+
+    async def _clean_retry_count(self, msg_id: str):
+        await self.redis.delete(self._retry_key(msg_id))
+
+    async def _send_to_dlq(self, msg_id: str, data: dict, error: str):
+        dlq_entry = {
+            "original_stream": self.stream,
+            "original_msg_id": msg_id,
+            "consumer": self.consumer,
+            "data": json.dumps(data, default=str),
+            "error": str(error),
+        }
+        try:
+            await self.redis.xadd(self.dlq_stream, dlq_entry, maxlen=1000)
+            logger.warning(f"Sent {msg_id} to dead-letter queue {self.dlq_stream}")
+        except Exception as dlq_err:
+            logger.error(f"Failed to send {msg_id} to DLQ: {dlq_err}")
 
     async def start(self):
         self._running = True
@@ -73,18 +110,17 @@ class BaseWorker:
         try:
             result = await self.handler(data)
             await self.redis.xack(self.stream, self.group, msg_id)
+            await self._clean_retry_count(msg_id)
             return result
         except Exception as e:
             logger.error(f"Handler failed on {msg_id}: {e}")
-            pending_detail = await self.redis.xpending_detail(self.stream, self.group, msg_id)
-            delivery_count = 0
-            if pending_detail:
-                delivery_count = pending_detail.get("delivery_count", 0)
+            delivery_count = await self._increment_retry_count(msg_id)
             if delivery_count >= self.max_retries:
                 logger.warning(f"Discarding {msg_id} after {delivery_count} attempts")
+                await self._send_to_dlq(msg_id, data, str(e))
                 await self.redis.xack(self.stream, self.group, msg_id)
             else:
-                backoff_time = self.backoff_base * (2 ** delivery_count)
-                logger.info(f"Retrying {msg_id} after {backoff_time}s (attempt {delivery_count + 1}/{self.max_retries})")
+                backoff_time = self.backoff_base * (2 ** (delivery_count - 1))
+                logger.info(f"Retrying {msg_id} after {backoff_time}s (attempt {delivery_count}/{self.max_retries})")
                 await asyncio.sleep(backoff_time)
             return None

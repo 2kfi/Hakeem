@@ -60,8 +60,10 @@ class SessionRegistry:
         await self.redis.expire(self._key(device_id), self._settings.session.ttl_seconds)
 
     async def update_config(self, device_id: str, config: SessionConfig) -> None:
-        await self.redis.hset_json(self._key(device_id), "config", config.model_dump_json())
-        await self.redis.hset_json(self._key(device_id), "language", config.language)
+        await self.redis.hset_dict(self._key(device_id), {
+            "config": config.model_dump_json(),
+            "language": config.language,
+        })
         await self.touch(device_id)
 
     async def set_status(self, device_id: str, status: str) -> None:

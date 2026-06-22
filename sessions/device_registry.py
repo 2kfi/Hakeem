@@ -1,4 +1,5 @@
 # Arkan Fakoseh -  @2kfi on github
+import json
 from datetime import datetime, timezone
 from typing import Optional
 from core.redis_manager import RedisManager
@@ -63,7 +64,8 @@ class DeviceRegistry:
         data = await self.redis.hget_json(self.KEY, device_id)
         if data and isinstance(data, dict):
             data["last_heartbeat"] = now
-            await self.redis.hset_dict(self.KEY, {device_id: data})
+            flat = {device_id: json.dumps(data, ensure_ascii=False)}
+            await self.redis.client.hset(self.KEY, mapping=flat)
         await self.redis.set_with_ttl(self._ws_key(device_id), self._settings.cluster.node_id, self.WS_NODE_TTL)
 
     async def set_status(self, device_id: str, status: DeviceStatus) -> None:

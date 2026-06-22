@@ -19,6 +19,7 @@ class ToolRegistry:
     def __init__(self):
         self._internal: dict[str, ToolDefinition] = {}
         self._remote: dict[str, ToolDefinition] = {}
+        self._remote_owners: dict[str, str] = {}
         self._mcp: dict[str, ToolDefinition] = {}
         self._mcp_handlers: dict[str, Callable[..., Any]] = {}
         self._lock = asyncio.Lock()
@@ -52,9 +53,11 @@ class ToolRegistry:
             is_internal=True,
         )
 
-    async def register_remote_tool(self, name: str, definition: ToolDefinition) -> None:
+    async def register_remote_tool(self, name: str, definition: ToolDefinition, owner_device_id: str | None = None) -> None:
         async with self._lock:
             self._remote[name] = definition
+            if owner_device_id:
+                self._remote_owners[name] = owner_device_id
 
     async def register_internal_tool(self, name: str, definition: ToolDefinition) -> None:
         async with self._lock:
@@ -104,8 +107,20 @@ class ToolRegistry:
         async with self._lock:
             if name in self._remote:
                 del self._remote[name]
+                self._remote_owners.pop(name, None)
                 return True
         return False
+
+    async def remove_device_tools(self, device_id: str) -> int:
+        async with self._lock:
+            to_remove = [n for n, o in self._remote_owners.items() if o == device_id]
+            for n in to_remove:
+                del self._remote[n]
+                del self._remote_owners[n]
+            return len(to_remove)
+
+    def get_remote_owner(self, tool_name: str) -> str | None:
+        return self._remote_owners.get(tool_name)
 
 
 _registry: Optional[ToolRegistry] = None

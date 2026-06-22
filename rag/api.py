@@ -30,6 +30,7 @@ async def list_documents(
     docs = await engine.list_documents()
     if domain:
         docs = [d for d in docs if d.get("domain") == domain]
+    logger.info("List documents (domain=%s): %d docs", domain or "all", len(docs))
     return {"documents": docs}
 
 
@@ -55,6 +56,8 @@ async def upload_document(
 
     try:
         result = await engine.index_document(str(tmp_path), domain)
+        logger.info("Uploaded %s -> domain=%s: doc_id=%s, chunks=%d",
+                     file.filename, domain, result.get("doc_id"), result.get("chunks", 0))
         return result
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -69,7 +72,9 @@ async def delete_document(
     engine = await _get_engine()
     success = await engine.delete_document(domain, doc_id)
     if not success:
+        logger.warning("Delete failed: doc_id=%s not found in domain=%s", doc_id, domain)
         raise HTTPException(status_code=404, detail="Document not found")
+    logger.info("Deleted doc_id=%s from domain=%s", doc_id, domain)
     return {"status": "deleted", "doc_id": doc_id}
 
 
@@ -80,6 +85,8 @@ async def search_documents(
 ):
     engine = await _get_engine()
     result = await engine.query(q)
+    logger.info("Search q=%s: domains=%s, chunks=%d, sufficient=%s, verification=%s",
+                 q, result.domains, len(result.chunks), result.sufficient, result.verification_status)
     return {
         "query": q,
         "domains": result.domains,
@@ -103,5 +110,7 @@ async def search_documents(
 async def reindex_documents(_=Depends(verify_jwt)):
     engine = await _get_engine()
     dirs = engine._settings.domain_source_dirs
+    logger.info("Reindex triggered for %d domains", len(dirs))
     n = await engine.index_if_changed(dirs)
+    logger.info("Reindex done: %d chunks indexed", n)
     return {"status": "reindexed", "chunks_indexed": n}

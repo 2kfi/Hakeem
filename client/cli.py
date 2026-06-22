@@ -2,7 +2,7 @@
 """
 Hakeem CLI Client — Wake-word triggered voice assistant.
 
-Listens for a wake word (Hakeem / يا ستر), streams audio to the
+Listens for a wake word (Hakeem / ), streams audio to the
 Hakeem backend, and plays back the TTS response.
 
 Usage:
@@ -11,10 +11,9 @@ Usage:
   python client/cli.py --framework tflite
   python client/cli.py --list-models
 """
-
+import openwakeword
 import argparse
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -39,6 +38,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("hakeem-cli")
+
+try:
+    openwakeword.utils.download_models()
+except Exception:
+    logger.warning("Could not download openwakeword models (offline?), using local models if available")
 
 
 def resolve_model_paths(config: ClientConfig, repo_root: Path) -> list[str]:
@@ -75,6 +79,24 @@ def list_available_models(repo_root: Path):
     print("Use --framework onnx or --framework tflite to select.")
 
 
+def list_audio_devices():
+    import pyaudio
+    p = pyaudio.PyAudio()
+    try:
+        info = p.get_host_api_info_by_index(0)
+        num_devices = info.get("deviceCount")
+        print("Available audio input devices:")
+        for i in range(num_devices):
+            dev = p.get_device_info_by_index(i)
+            if dev.get("maxInputChannels", 0) > 0:
+                name = dev.get("name")
+                sr = dev.get("defaultSampleRate", 0)
+                channels = dev.get("maxInputChannels", 0)
+                print(f"  {i}: {name}  ({sr} Hz, {channels} ch)")
+    finally:
+        p.terminate()
+
+
 def generate_jwt(config: ClientConfig) -> str:
     if config.jwt_token:
         return config.jwt_token
@@ -84,7 +106,7 @@ def generate_jwt(config: ClientConfig) -> str:
             "Set jwt_token or jwt_secret in client/config.yaml, "
             "or run: python scripts/generate_secrets.py"
         )
-        sys.exit(1)
+        return ""
     try:
         from jose import jwt
         import time
@@ -92,7 +114,7 @@ def generate_jwt(config: ClientConfig) -> str:
             {
                 "user_id": config.user_id,
                 "device_id": config.device_id,
-                "permissions": ["admin"],
+                "permissions": config.jwt_permissions,
                 "iat": time.time(),
                 "exp": time.time() + 86400,
             },
@@ -102,7 +124,7 @@ def generate_jwt(config: ClientConfig) -> str:
         return token
     except ImportError:
         logger.error("python-jose not installed. Set jwt_token in config, or install jose.")
-        sys.exit(1)
+        return ""
 
 
 async def run_session(
@@ -113,6 +135,10 @@ async def run_session(
     language: str = "",
 ):
     token = generate_jwt(config)
+    if not token:
+        logger.error("No JWT token available, cannot connect")
+        return
+
     backend = HakeemBackendClient(
         url=config.backend_url,
         token=token,
@@ -127,7 +153,15 @@ async def run_session(
             return
 
         await backend.send_audio(audio_b64, language=language)
-        text, audio_b64_resp = await backend.handle_messages(audio_player=player)
+        try:
+            text, audio_b64_resp = await asyncio.wait_for(
+                backend.handle_messages(audio_player=player),
+                timeout=config.response_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.error("No response from backend within %ss", config.response_timeout)
+            text = None
+            audio_b64_resp = None
 
         if text:
             logger.info("Assistant: %s", text)
@@ -150,30 +184,58 @@ async def main_loop(config: ClientConfig):
     if not model_paths:
         logger.warning("No wake word models found — using openwakeword defaults")
 
-    detector = WakeWordDetector(
-        model_paths=model_paths,
-        framework=config.inference_framework,
-        chunk_size=config.chunk_size,
-        threshold=config.wakeword_threshold,
+    try:
+        detector = WakeWordDetector(
+            model_paths=model_paths,
+            framework=config.inference_framework,
+            chunk_size=config.chunk_size,
+            threshold=config.wakeword_threshold,
+        )
+    except Exception as e:
+        logger.error("Failed to initialize wake word detector: %s", e)
+        return
+
+    token = generate_jwt(config)
+    if not token:
+        logger.error("No JWT token available, cannot connect")
+        return
+
+    backend = HakeemBackendClient(
+        url=config.backend_url,
+        token=token,
+        device_id=config.device_id,
+        user_id=config.user_id,
     )
+
+    ok = await backend.connect()
+    if not ok:
+        logger.error("Could not connect to backend at %s", config.backend_url)
+        return
 
     mic = MicrophoneStream(
         sample_rate=config.sample_rate,
         chunk_size=config.chunk_size,
+        input_device=config.input_device,
     )
 
     player = AudioPlayer()
 
+    backend.start_listening(player)
+
     try:
         while True:
-            logger.info("🎤 Listening for wake word...")
+            logger.info("Listening for wake word...")
 
-            audio_pcm = record_until_silence(
+            audio_pcm = await asyncio.to_thread(
+                record_until_silence,
                 mic,
                 wakeword_detector=detector,
                 silence_threshold=config.silence_threshold,
                 min_chunks=config.min_audio_chunks,
                 max_seconds=config.max_record_seconds,
+                pre_timeout=config.wakeword_timeout,
+                on_wakeword=lambda: player.play_beep(880, 0.15, 0.3),
+                on_silence=lambda: player.play_beep(440, 0.2, 0.25),
             )
 
             if len(audio_pcm) < config.min_audio_chunks * config.chunk_size * 2:
@@ -182,12 +244,67 @@ async def main_loop(config: ClientConfig):
             wav_bytes = pcm_to_wav(audio_pcm, sample_rate=config.sample_rate)
             audio_b64 = wav_to_base64(wav_bytes)
             duration = len(audio_pcm) / (config.sample_rate * 2)
-            logger.info("🎤 Recorded %.1fs — sending to backend", duration)
+            logger.info("Recorded %.1fs — sending to backend", duration)
 
-            await run_session(config, mic, player, audio_b64)
+            await backend.send_audio(audio_b64)
+            text, audio_b64_resp = await backend.wait_for_response(config.response_timeout)
+
+            if text:
+                logger.info("Assistant: %s", text)
+
+            await asyncio.sleep(config.wakeword_cooldown)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+    finally:
+        await backend.close()
+        mic.close()
+        player.close()
+
+
+async def run_once(config: ClientConfig, language: str = ""):
+    repo_root = REPO_ROOT
+
+    model_paths = resolve_model_paths(config, repo_root)
+    if not model_paths:
+        model_paths = resolve_default_models(repo_root, config.inference_framework)
+
+    try:
+        detector = WakeWordDetector(
+            model_paths=model_paths,
+            framework=config.inference_framework,
+            chunk_size=config.chunk_size,
+            threshold=config.wakeword_threshold,
+        )
+    except Exception as e:
+        logger.error("Failed to initialize wake word detector: %s", e)
+        return
+
+    mic = MicrophoneStream(
+        sample_rate=config.sample_rate, chunk_size=config.chunk_size,
+        input_device=config.input_device,
+    )
+    player = AudioPlayer()
+
+    try:
+        logger.info("Listening (one-shot)...")
+        audio_pcm = await asyncio.to_thread(
+            record_until_silence,
+            mic, wakeword_detector=detector,
+            silence_threshold=config.silence_threshold,
+            min_chunks=config.min_audio_chunks,
+            max_seconds=config.max_record_seconds,
+            pre_timeout=config.wakeword_timeout,
+            on_wakeword=lambda: player.play_beep(880, 0.15, 0.3),
+            on_silence=lambda: player.play_beep(440, 0.2, 0.25),
+        )
+        if len(audio_pcm) < config.min_audio_chunks * config.chunk_size * 2:
+            logger.info("No audio detected")
+            return
+
+        wav_bytes = pcm_to_wav(audio_pcm, sample_rate=config.sample_rate)
+        audio_b64 = wav_to_base64(wav_bytes)
+        await run_session(config, mic, player, audio_b64, language=language)
     finally:
         mic.close()
         player.close()
@@ -202,6 +319,8 @@ def main():
     parser.add_argument("--backend-port", type=int, default=None, help="Backend port")
     parser.add_argument("--jwt-secret", default=None, help="JWT secret for token generation")
     parser.add_argument("--jwt-token", default=None, help="Pre-generated JWT token")
+    parser.add_argument("--list-devices", action="store_true", help="List audio input devices and exit")
+    parser.add_argument("--input-device", type=int, default=None, help="Input device index (use --list-devices)")
     parser.add_argument("--list-models", action="store_true", help="List available wake models")
     parser.add_argument("--once", action="store_true", help="Single wake-record-send cycle")
     parser.add_argument("--threshold", type=float, default=None, help="Wake word threshold")
@@ -226,46 +345,21 @@ def main():
     if args.debug:
         logging.getLogger("hakeem-cli").setLevel(logging.DEBUG)
 
+    if args.input_device is not None:
+        config.input_device = args.input_device
+
     if args.list_models:
         list_available_models(REPO_ROOT)
+        return
+
+    if args.list_devices:
+        list_audio_devices()
         return
 
     if args.once:
         asyncio.run(run_once(config, args.language))
     else:
         asyncio.run(main_loop(config))
-
-
-async def run_once(config: ClientConfig, language: str = ""):
-    repo_root = REPO_ROOT
-    model_paths = resolve_default_models(repo_root, config.inference_framework)
-    detector = WakeWordDetector(
-        model_paths=model_paths,
-        framework=config.inference_framework,
-        chunk_size=config.chunk_size,
-        threshold=config.wakeword_threshold,
-    )
-    mic = MicrophoneStream(sample_rate=config.sample_rate, chunk_size=config.chunk_size)
-    player = AudioPlayer()
-
-    try:
-        print("🎤 Listening (one-shot)...")
-        audio_pcm = record_until_silence(
-            mic, wakeword_detector=detector,
-            silence_threshold=config.silence_threshold,
-            min_chunks=config.min_audio_chunks,
-            max_seconds=config.max_record_seconds,
-        )
-        if len(audio_pcm) < config.min_audio_chunks * config.chunk_size * 2:
-            print("No audio detected")
-            return
-
-        wav_bytes = pcm_to_wav(audio_pcm, sample_rate=config.sample_rate)
-        audio_b64 = wav_to_base64(wav_bytes)
-        await run_session(config, mic, player, audio_b64, language=language)
-    finally:
-        mic.close()
-        player.close()
 
 
 if __name__ == "__main__":

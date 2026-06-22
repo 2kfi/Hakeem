@@ -18,6 +18,9 @@ from tools.router import route_tool_calls_batch
 logger = logging.getLogger(__name__)
 
 
+_rag_cache: dict[str, tuple[Optional[str], list[dict[str, Any]]]] = {}
+
+
 async def _get_rag_context(user_message: str) -> Optional[str]:
     try:
         from rag.engine import get_rag_engine
@@ -25,22 +28,7 @@ async def _get_rag_context(user_message: str) -> Optional[str]:
         if engine and engine.is_initialized:
             response = await engine.query(user_message)
             if response.sufficient and response.formatted_context:
-                return response.formatted_context
-    except Exception as e:
-        logger.warning(f"RAG retrieval failed: {e}")
-    return None
-
-
-async def _get_rag_context_as_list(
-    user_message: str,
-) -> list[dict[str, Any]]:
-    try:
-        from rag.engine import get_rag_engine
-        engine = await get_rag_engine()
-        if engine and engine.is_initialized:
-            response = await engine.query(user_message)
-            if response.sufficient:
-                return [
+                chunks_list = [
                     {
                         "chunk_id": c.chunk_id,
                         "content": c.content,
@@ -51,8 +39,17 @@ async def _get_rag_context_as_list(
                     }
                     for c in response.chunks
                 ]
+                _rag_cache[user_message] = (response.formatted_context, chunks_list)
+                return response.formatted_context
     except Exception as e:
         logger.warning(f"RAG retrieval failed: {e}")
+    return None
+
+
+def _get_cached_rag_chunks(user_message: str) -> list[dict[str, Any]]:
+    cached = _rag_cache.get(user_message)
+    if cached:
+        return cached[1]
     return []
 
 
@@ -130,7 +127,7 @@ class LLMRunner:
                         timeout=self._settings.llm.timeout,
                         max_retries=self._settings.llm.max_retries,
                     )
-                    contexts = [r["content"] for r in (await _get_rag_context_as_list(user_message))]
+                    contexts = [r["content"] for r in _get_cached_rag_chunks(user_message)]
 
                     refined_text, eval_result = await evaluator.evaluate_with_retry(
                         query=user_message,

@@ -1,7 +1,5 @@
-# Arkan Fakoseh -  @2kfi on github
 import asyncio
 import base64
-import json
 import logging
 from typing import Optional
 
@@ -12,6 +10,21 @@ from pipeline.tts_queue import TTSQueue
 logger = logging.getLogger(__name__)
 
 _tts_queue: Optional[TTSQueue] = None
+
+ARABIC_RANGE = range(0x0600, 0x06FF + 1)
+
+
+def _detect_language_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    arabic_chars = sum(1 for c in text if ord(c) in ARABIC_RANGE)
+    total = len(text.strip())
+    if total == 0:
+        return None
+    arabic_ratio = arabic_chars / total
+    if arabic_ratio > 0.3:
+        return "ar"
+    return "en"
 
 
 async def get_tts_queue(redis: RedisManager) -> TTSQueue:
@@ -34,12 +47,22 @@ async def tts_handler(data: dict) -> dict:
         logger.warning(f"TTS [{device_id}]: empty response text, skipping synthesis")
         return {"device_id": device_id, "session_id": session_id, "audio": "", "text": ""}
 
-    skip_tts = data.get("skip_tts", False)
+    skip_tts = data.get("skip_tts", "false")
     if isinstance(skip_tts, str):
         skip_tts = skip_tts.lower() in ("true", "1", "yes")
+    else:
+        skip_tts = bool(skip_tts)
     if skip_tts:
         logger.info(f"TTS [{device_id}]: skip_tts=true, returning text-only response")
         return {"device_id": device_id, "session_id": session_id, "audio": "", "text": response_text, "text_only": "true"}
+
+    detected_lang = _detect_language_from_text(response_text)
+    if detected_lang and language != detected_lang:
+        logger.info(
+            f"TTS [{device_id}]: language mismatch — upstream said '{language}' but text "
+            f"detected as '{detected_lang}', overriding"
+        )
+        language = detected_lang
 
     logger.info(f"TTS [{device_id}]: synthesizing {len(response_text)} chars for language={language}")
     audio_b64 = await tts.synthesize_and_b64(response_text, language=language)

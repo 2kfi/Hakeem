@@ -1,5 +1,4 @@
 import logging
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -24,9 +23,10 @@ class WakeWordDetector:
         try:
             from openwakeword.model import Model
         except ImportError:
-            print("ERROR: openwakeword not installed.")
-            print(f"  pip install -r client/requirements-{framework}.txt")
-            sys.exit(1)
+            raise ImportError(
+                "openwakeword is not installed.\n"
+                f"  pip install -r client/requirements-{framework}.txt"
+            )
 
         resolved_paths = []
         if model_paths:
@@ -50,10 +50,11 @@ class WakeWordDetector:
                 len(self.model.models), framework,
             )
         except Exception as e:
-            logger.error("Failed to load openwakeword models: %s", e)
-            sys.exit(1)
+            raise RuntimeError(f"Failed to load openwakeword models: {e}") from e
 
     def predict(self, audio_chunk: np.ndarray) -> dict[str, float]:
+        if self.model is None:
+            return {}
         self.model.predict(audio_chunk)
         scores = {}
         for name in self.model.prediction_buffer:
@@ -66,10 +67,3 @@ class WakeWordDetector:
             if score >= self.threshold:
                 return True, name
         return False, ""
-
-    def __del__(self):
-        if self.model is not None:
-            try:
-                self.model = None
-            except Exception:
-                pass

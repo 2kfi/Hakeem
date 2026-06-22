@@ -1,6 +1,6 @@
-# Arkan Fakoseh -  @2kfi on github
 import asyncio
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 from faster_whisper import WhisperModel
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class AppState:
     whisper_model: Optional[WhisperModel] = None
+    whisper_lock: threading.Lock = threading.Lock()
     tts_voices: dict[str, PiperVoice] = {}
     llm_client: Optional[AsyncOpenAI] = None
     syn_config: Optional[SynthesisConfig] = None
@@ -53,7 +54,8 @@ class AppState:
         model_path = Path(settings.stt.model_dir) / f"whisper-{settings.stt.model_name}"
         if model_path.exists():
             logger.info(f"Loading Whisper model from {model_path}")
-            cls.whisper_model = WhisperModel(
+            cls.whisper_model = await asyncio.to_thread(
+                WhisperModel,
                 str(model_path),
                 device=settings.stt.device,
                 compute_type=settings.stt.compute_type,

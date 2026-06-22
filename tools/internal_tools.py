@@ -33,13 +33,19 @@ async def run_internal_tool(tool_name: str, params: dict[str, Any], timeout: flo
 
 async def _get_time(params: dict[str, Any]) -> dict[str, Any]:
     await asyncio.sleep(0.01)
-    tz = params.get("tz", "UTC")
-    now = datetime.now(timezone.utc)
+    tz_name = params.get("tz", "UTC")
+    import zoneinfo
+    try:
+        tz = zoneinfo.ZoneInfo(tz_name)
+    except (KeyError, TypeError):
+        tz = timezone.utc
+        tz_name = "UTC"
+    now = datetime.now(tz)
     return {
         "time": now.strftime("%H:%M:%S"),
         "date": now.strftime("%Y-%m-%d"),
         "iso": now.isoformat(),
-        "timezone": tz,
+        "timezone": tz_name,
     }
 
 

@@ -20,6 +20,10 @@ async def llm_handler(data: dict) -> dict:
     text = data.get("text", "")
     language = data.get("language", "")
 
+    if not device_id:
+        logger.warning("LLM: missing device_id, dropping job")
+        return {"device_id": "", "session_id": "", "text": "", "response": "", "language": language}
+
     runner = LLMRunner(redis, conv_store)
 
     if not text:

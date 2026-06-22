@@ -96,24 +96,32 @@ async def lifespan(app: FastAPI):
     # ═══════════════════════════════════════════════════════════════════
     logger.info("═══════════ Phase 4: Workers ═══════════")
     worker_mgr = WorkerManager(redis)
-    await worker_mgr.start_all()
+    started_ok = False
+    try:
+        await worker_mgr.start_all()
+        started_ok = True
+    except Exception as e:
+        logger.error(f"Failed to start workers: {e}", exc_info=True)
+        await worker_mgr.stop_all()
+        raise
 
     ws_listener_task = asyncio.create_task(_start_ws_listener(settings.cluster.node_id, redis))
 
     # ── External MCP servers ──────────────────────────────────────────
     # Connect to configured MCP servers and register their tools in the
     # ToolRegistry so the pipeline LLM can call them.
+    mcp_wrapper = None
     if settings.mcp.servers:
-        mcp_wrapper = MCPWrapper(
-            llama_base_url=settings.llm.api_base_url,
-            llama_model=settings.llm.model,
-            mcp_servers=settings.mcp.servers,
-            api_key=settings.llm.api_key,
-            timeout=settings.llm.timeout,
-            max_tool_loops=settings.mcp.max_tool_loops,
-            max_retries=settings.mcp.max_retries,
-        )
         try:
+            mcp_wrapper = MCPWrapper(
+                llama_base_url=settings.llm.api_base_url,
+                llama_model=settings.llm.model,
+                mcp_servers=settings.mcp.servers,
+                api_key=settings.llm.api_key,
+                timeout=settings.llm.timeout,
+                max_tool_loops=settings.mcp.max_tool_loops,
+                max_retries=settings.mcp.max_retries,
+            )
             await mcp_wrapper.initialize_servers()
             n = await mcp_wrapper.register_all_in_registry()
             logger.info("Registered %d external MCP tools in ToolRegistry", n)
@@ -144,9 +152,13 @@ async def lifespan(app: FastAPI):
         await ws_listener_task
     except asyncio.CancelledError:
         pass
-    await worker_mgr.stop_all()
-    if hasattr(app.state, "mcp_wrapper"):
-        await app.state.mcp_wrapper.close()
+    if started_ok:
+        await worker_mgr.stop_all()
+    if mcp_wrapper is not None:
+        try:
+            await mcp_wrapper.close()
+        except Exception:
+            pass
     await AppState.shutdown()
     await redis.close()
     logger.info("Shutdown complete")
@@ -200,17 +212,18 @@ async def api_key_fallback(request: Request, call_next):
             if settings.auth.jwt_only:
                 return JSONResponse({"error": "Invalid JWT token"}, status_code=401)
 
-    if not settings.auth.jwt_only and settings.auth.api_keys:
-        if auth.startswith("Bearer "):
-            key = auth.replace("Bearer ", "").strip()
-            if key in settings.auth.api_keys:
-                return await call_next(request)
-        return JSONResponse({"error": "Invalid API key"}, status_code=401)
+    if not settings.auth.jwt_only:
+        if settings.auth.api_keys:
+            if auth.startswith("Bearer "):
+                key = auth.replace("Bearer ", "").strip()
+                if not key:
+                    return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
+                if key in settings.auth.api_keys:
+                    return await call_next(request)
+            return JSONResponse({"error": "Invalid API key"}, status_code=401)
+        return JSONResponse({"error": "Authentication not configured (set JWT_SECRET or AUTH_API_KEYS)"}, status_code=401)
 
-    if settings.auth.jwt_only:
-        return JSONResponse({"error": "Missing or invalid Authorization header"}, status_code=401)
-
-    return await call_next(request)
+    return JSONResponse({"error": "Missing or invalid Authorization header"}, status_code=401)
 
 
 @app.middleware("http")
@@ -230,7 +243,8 @@ app.include_router(rag_router)
 
 
 @app.get("/")
-async def root():
+@limiter.limit("60/minute")
+async def root(request: Request):
     return {
         "service": "najim-backend",
         "version": "3.0.0",
@@ -263,7 +277,7 @@ if __name__ == "__main__":
         "host": settings.api_host,
         "port": settings.api_port,
         "log_level": "debug" if settings.debug else "info",
-        "ws_ping_interval": None,
+        "ws_ping_interval": 25,
         "ws_max_size": settings.ws_max_size,
     }
 
