@@ -72,22 +72,31 @@ class BaseWorker:
 
     async def start(self):
         self._running = True
-        await self.redis.xgroup_create(self.stream, self.group)
+        try:
+            await self.redis.xgroup_create(self.stream, self.group)
+        except Exception as e:
+            logger.error(f"Worker {self.consumer}: xgroup_create failed: {e}")
         logger.info(f"Worker {self.consumer} starting on stream {self.stream}")
+        error_count = 0
         while self._running:
             try:
                 result = await self._process_one()
-                if result:
-                    keys = list(result.keys())
-                    logger.debug(f"Worker {self.consumer} got result: keys={keys}")
-                    if self.target_stream:
-                        await self.redis.xadd(self.target_stream, result, maxlen=1000)
-                        logger.info(f"Forwarded to {self.target_stream}: {len(result)} fields")
+                error_count = 0
+                if result and self.target_stream:
+                    await self.redis.xadd(self.target_stream, result, maxlen=1000)
+                    logger.debug(f"Forwarded to {self.target_stream}: {len(result)} fields")
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Worker {self.consumer} error: {e}", exc_info=True)
-                await asyncio.sleep(1)
+                error_count += 1
+                if error_count > 20:
+                    logger.critical(f"Worker {self.consumer} giving up after 20 consecutive errors")
+                    break
+                if error_count == 1:
+                    logger.error(f"Worker {self.consumer} error: {e}", exc_info=True)
+                else:
+                    logger.warning(f"Worker {self.consumer} error (attempt #{error_count}): {e}")
+                await asyncio.sleep(min(2 ** (error_count - 1), 60))
 
     def stop(self):
         self._running = False

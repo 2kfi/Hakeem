@@ -7,14 +7,16 @@
 set -e
 
 if [ -n "$REDIS_URL" ]; then
-    echo "[hakeem] Using REDIS_URL: $REDIS_URL"
+    masked=$(echo "$REDIS_URL" | sed 's|://[^@]*@|://****:****@|')
+    echo "[hakeem] Using REDIS_URL: $masked"
 elif [ -n "$REDIS_HOST" ]; then
     echo "[hakeem] Using REDIS_HOST: $REDIS_HOST"
 fi
 
 if [ -z "$JWT_SECRET" ]; then
-    echo "[hakeem] WARNING: JWT_SECRET not set! Generating ephemeral secret."
-    JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    echo "[hakeem] ERROR: JWT_SECRET is required. Set JWT_SECRET env var."
+    echo "[hakeem]   python3 -c \"import secrets; print(secrets.token_hex(32))\""
+    exit 1
 fi
 
 cat > /app/config.yaml <<EOF
@@ -135,13 +137,14 @@ fi
 
 # Generate JWT for admin testing if DEBUG is on
 if [ "${DEBUG:-false}" = "true" ]; then
-    echo "[hakeem] DEBUG mode — generating test admin token..."
+    echo "[hakeem] DEBUG mode — generated test admin token (see DEBUG_ADMIN_TOKEN file)"
     python3 -c "
 from core.jwt_auth import get_jwt_manager
 mgr = get_jwt_manager()
 token = mgr.create_token('admin', 'admin-device', permissions=['admin'])
-print(f'[hakeem] Admin JWT: {token}')
-"
+with open('/app/DEBUG_ADMIN_TOKEN', 'w') as f:
+    f.write(token + '\n')
+" 2>/dev/null
 fi
 
 echo "[hakeem] Starting uvicorn on 0.0.0.0:${API_PORT:-8080}"

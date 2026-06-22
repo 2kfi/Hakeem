@@ -51,46 +51,49 @@ async def _start_ws_listener(node_id: str, redis: RedisManager) -> None:
     channel = f"hakeem:ws_send:{node_id}"
     reconnect_count = 0
     max_reconnects = 20
-    while reconnect_count <= max_reconnects:
-        pubsub = None
-        try:
-            pubsub = redis.client.pubsub()
-            await pubsub.subscribe(channel)
-            if reconnect_count > 0:
-                logger.info(f"WS listener reconnected to {channel} (attempt #{reconnect_count})")
-            else:
-                logger.info(f"WS listener subscribed to {channel}")
-            reconnect_count = 0
-            async for msg in pubsub.listen():
-                if msg["type"] == "message":
-                    try:
-                        data = json.loads(msg["data"])
-                        device_id = data.get("device_id")
-                        if device_id and device_id in _active_connections:
-                            ws = _active_connections[device_id]
-                            if ws.client_state == WebSocketState.CONNECTED:
-                                await ws.send_json(data)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"WS send error: invalid JSON: {e}")
-                    except Exception as e:
-                        logger.error(f"WS send error: {e}")
-        except asyncio.CancelledError:
-            logger.info("WS listener cancelled")
-            return
-        except Exception as e:
-            reconnect_count += 1
-            if reconnect_count > max_reconnects:
-                logger.critical(f"WS listener gave up after {max_reconnects} attempts: {e}")
+    try:
+        while reconnect_count <= max_reconnects:
+            pubsub = None
+            try:
+                pubsub = redis.client.pubsub()
+                await pubsub.subscribe(channel)
+                if reconnect_count > 0:
+                    logger.info(f"WS listener reconnected to {channel} (attempt #{reconnect_count})")
+                else:
+                    logger.info(f"WS listener subscribed to {channel}")
+                reconnect_count = 0
+                async for msg in pubsub.listen():
+                    if msg["type"] == "message":
+                        try:
+                            data = json.loads(msg["data"])
+                            device_id = data.get("device_id")
+                            if device_id and device_id in _active_connections:
+                                ws = _active_connections[device_id]
+                                if ws.client_state == WebSocketState.CONNECTED:
+                                    await ws.send_json(data)
+                        except json.JSONDecodeError as e:
+                            logger.error(f"WS send error: invalid JSON: {e}")
+                        except Exception as e:
+                            logger.error(f"WS send error: {e}")
+            except asyncio.CancelledError:
+                logger.info("WS listener cancelled")
                 return
-            logger.error(f"WS listener error (attempt #{reconnect_count}): {e}, reconnecting in 5s...")
-            await asyncio.sleep(min(5 * reconnect_count, 60))
-        finally:
-            if pubsub is not None:
-                try:
-                    await pubsub.unsubscribe(channel)
-                    await pubsub.close()
-                except Exception:
-                    pass
+            except Exception as e:
+                reconnect_count += 1
+                if reconnect_count > max_reconnects:
+                    logger.critical(f"WS listener gave up after {max_reconnects} attempts: {e}")
+                    return
+                logger.error(f"WS listener error (attempt #{reconnect_count}): {e}, reconnecting in 5s...")
+                await asyncio.sleep(min(5 * reconnect_count, 60))
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe(channel)
+                        await pubsub.close()
+                    except Exception:
+                        pass
+    finally:
+        _pubsub_listener_started = False
 
 
 async def _register_phone_tools(device_id: str, capabilities: list[str], tools_list: list[dict], previous_names: set[str] | None = None):

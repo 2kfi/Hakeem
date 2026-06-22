@@ -72,6 +72,7 @@ class RedisSettings(BaseSettings):
     pool_size: int = 20
     socket_keepalive: bool = True
     socket_connect_timeout: int = 5
+    socket_timeout: int = 10
     health_check_interval: int = 30
 
 
@@ -270,7 +271,10 @@ class _NestedEnvSource:
             for env_key, env_val in os.environ.items():
                 if env_key.startswith(prefix):
                     sub_key = env_key[len(prefix):].lower()
-                    sub[sub_key] = env_val
+                    try:
+                        sub[sub_key] = json.loads(env_val)
+                    except (json.JSONDecodeError, TypeError):
+                        sub[sub_key] = env_val
         return result
 
 

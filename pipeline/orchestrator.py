@@ -40,10 +40,16 @@ class WorkerManager:
         for name, count, fn, suffix in stage_configs:
             for i in range(count):
                 consumer = f"{self._consumer_id}:{suffix}-{i}"
-                coro = fn(self.redis, consumer)
+                coro = self._watch_worker(name, consumer, fn(self.redis, consumer))
                 task = asyncio.create_task(coro, name=f"worker:{name}-{i}")
                 self._tasks.append(task)
                 logger.info(f"Started {name} worker {i+1}/{count} [{consumer}]")
+
+    async def _watch_worker(self, stage: str, consumer: str, coro):
+        try:
+            await coro
+        except Exception as e:
+            logger.critical(f"Worker {consumer} ({stage}) crashed: {e}", exc_info=True)
 
     async def stop_all(self):
         self._running = False

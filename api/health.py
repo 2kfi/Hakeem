@@ -3,7 +3,7 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 
 from core.app_state import get_app_state
 from core.jwt_auth import verify_jwt
@@ -31,8 +31,9 @@ async def health_check():
     device_reg = DeviceRegistry(redis)
     connected_devices = await device_reg.count()
 
+    is_healthy = redis_ok and whisper_ok
     return HealthResponse(
-        status="healthy" if (redis_ok and whisper_ok) else "degraded",
+        status="healthy" if is_healthy else "degraded",
         node_id=get_settings().cluster.node_id,
         redis=redis_ok,
         whisper_model=whisper_ok,
@@ -72,13 +73,19 @@ async def metrics(claims: dict = Depends(verify_jwt)):
 async def readiness():
     redis = await get_redis()
     if not await redis.ping():
-        return {"ready": False, "reason": "Redis unavailable"}
+        return JSONResponse({"ready": False, "reason": "Redis unavailable"}, status_code=503)
     state = get_app_state()
     if not state.initialized:
-        return {"ready": False, "reason": "Models not loaded"}
+        return JSONResponse({"ready": False, "reason": "Models not loaded"}, status_code=503)
     return {"ready": True}
 
 
 @router.get("/live")
 async def liveness():
+    try:
+        redis = await get_redis()
+        if not await redis.ping():
+            return JSONResponse({"alive": False, "reason": "Redis unavailable"}, status_code=503)
+    except Exception:
+        return JSONResponse({"alive": False, "reason": "Redis connection failed"}, status_code=503)
     return {"alive": True}

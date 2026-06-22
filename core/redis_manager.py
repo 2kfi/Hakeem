@@ -42,23 +42,31 @@ class RedisManager:
     async def _initialize(self):
         s = self._settings.redis
 
+        pool_kwargs = {
+            "max_connections": s.pool_size,
+            "socket_keepalive": s.socket_keepalive,
+            "socket_connect_timeout": s.socket_connect_timeout,
+            "socket_timeout": s.socket_timeout,
+            "health_check_interval": s.health_check_interval,
+        }
         if s.url:
-            self._pool = ConnectionPool.from_url(s.url, max_connections=s.pool_size)
+            self._pool = ConnectionPool.from_url(s.url, **pool_kwargs)
         else:
-            pool_kwargs = {
+            pool_kwargs.update({
                 "host": s.host,
                 "port": s.port,
                 "password": s.password if s.password else None,
-                "max_connections": s.pool_size,
-                "socket_keepalive": s.socket_keepalive,
-                "socket_connect_timeout": s.socket_connect_timeout,
-                "health_check_interval": s.health_check_interval,
-            }
+            })
             if s.tls:
                 pool_kwargs["connection_class"] = SSLConnection
             self._pool = ConnectionPool(**pool_kwargs)
 
         self._client = Redis(connection_pool=self._pool)
+        try:
+            await self._client.ping()
+        except Exception as e:
+            logger.critical(f"Redis unreachable at {s.url or f'{s.host}:{s.port}'}: {e}")
+            raise
         self._initialized = True
 
     @property
