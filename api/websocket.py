@@ -118,23 +118,24 @@ async def _register_phone_tools(device_id: str, capabilities: list[str], tools_l
 
 @router.websocket("/connect")
 async def ws_connect(websocket: WebSocket, token: Optional[str] = Query(None)):
-    if not token:
-        await websocket.close(code=4001, reason="Missing token")
-        return
+    if get_settings().auth.disabled:
+        claims = {"device_id": "anon", "user_id": "anon", "permissions": ["*"]}
+        await websocket.accept()
+    else:
+        if not token:
+            await websocket.close(code=4001, reason="Missing token")
+            return
 
-    try:
-        claims = await ws_verify(token)
-    except Exception as e:
-        await websocket.close(code=4002, reason=f"Invalid token: {e}")
-        return
+        try:
+            claims = await ws_verify(token)
+        except Exception as e:
+            await websocket.close(code=4002, reason=f"Invalid token: {e}")
+            return
+
+        await websocket.accept()
 
     device_id = claims.get("device_id")
     user_id = claims.get("user_id")
-    if not device_id:
-        await websocket.close(code=4003, reason="Missing device_id in token")
-        return
-
-    await websocket.accept()
 
     settings = get_settings()
     redis = await get_redis()

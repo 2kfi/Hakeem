@@ -33,13 +33,14 @@ class HakeemBackendClient:
     def _build_uri(self) -> str:
         parts = urlsplit(self.url)
         query = parts.query
-        token_param = urlencode({"token": self.token})
-        new_query = f"{query}&{token_param}" if query else token_param
+        if self.token:
+            token_param = urlencode({"token": self.token})
+            query = f"{query}&{token_param}" if query else token_param
         return urlunsplit(SplitResult(
             scheme=parts.scheme,
             netloc=parts.netloc,
             path=parts.path,
-            query=new_query,
+            query=query,
             fragment="",
         ))
 
@@ -81,7 +82,10 @@ class HakeemBackendClient:
                 logger.error("Unexpected connect response: %s", resp)
                 return False
         except Exception as e:
-            logger.error("Failed to connect: %s", e)
+            if not self.token:
+                logger.error("No token available. Run server with --no-auth or set api_key in client config")
+            else:
+                logger.error("Failed to connect: %s", e)
             return False
 
     async def send_audio(self, audio_b64: str, language: str = ""):

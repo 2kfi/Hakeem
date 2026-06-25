@@ -28,6 +28,7 @@ class ClientConfig:
     backend_tls: bool = False
     ws_path: str = _DEFAULT_WS_PATH
 
+    api_key: str = ""
     jwt_secret: str = ""
     jwt_token: str = ""
     jwt_permissions: list[str] = None
@@ -90,6 +91,7 @@ class ClientConfig:
         cfg.backend_tls = _parse_bool(raw_tls)
         cfg.ws_path = client_cfg.get("ws_path", os.getenv("WS_PATH", cfg.ws_path))
 
+        cfg.api_key = client_cfg.get("api_key", os.getenv("API_KEY", cfg.api_key))
         cfg.jwt_secret = client_cfg.get("jwt_secret", os.getenv("JWT_SECRET", cfg.jwt_secret))
         cfg.jwt_token = client_cfg.get("jwt_token", os.getenv("JWT_TOKEN", cfg.jwt_token))
         cfg.device_id = client_cfg.get("device_id", os.getenv("DEVICE_ID", cfg.device_id))
@@ -120,3 +122,8 @@ class ClientConfig:
     def backend_url(self) -> str:
         scheme = "wss" if self.backend_tls else "ws"
         return f"{scheme}://{self.backend_host}:{self.backend_port}{self.ws_path}"
+
+    @property
+    def auth_url(self) -> str:
+        scheme = "https" if self.backend_tls else "http"
+        return f"{scheme}://{self.backend_host}:{self.backend_port}/api/v1/auth/token"

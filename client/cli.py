@@ -14,9 +14,11 @@ Usage:
 import openwakeword
 import argparse
 import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
+from urllib.request import urlopen, Request
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -97,34 +99,22 @@ def list_audio_devices():
         p.terminate()
 
 
-def generate_jwt(config: ClientConfig) -> str:
+def fetch_token(config: ClientConfig) -> str:
     if config.jwt_token:
         return config.jwt_token
-    if not config.jwt_secret:
-        logger.error(
-            "No JWT token or JWT_SECRET configured. "
-            "Set jwt_token or jwt_secret in client/config.yaml, "
-            "or run: python scripts/generate_secrets.py"
-        )
-        return ""
+
+    api_key = config.api_key
+    if not api_key:
+        api_key = "dev"  # try with a placeholder — works when server has --no-auth
+
     try:
-        from jose import jwt
-        import time
-        token = jwt.encode(
-            {
-                "user_id": config.user_id,
-                "device_id": config.device_id,
-                "permissions": config.jwt_permissions,
-                "iat": time.time(),
-                "exp": time.time() + 86400,
-            },
-            config.jwt_secret,
-            algorithm="HS256",
-        )
-        return token
-    except ImportError:
-        logger.error("python-jose not installed. Set jwt_token in config, or install jose.")
-        return ""
+        body = json.dumps({"api_key": api_key, "device_id": config.device_id}).encode()
+        req = Request(config.auth_url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            return data["access_token"]
+    except Exception:
+        return ""  # caller handles empty token — may work if server has --no-auth
 
 
 async def run_session(
@@ -134,10 +124,7 @@ async def run_session(
     audio_b64: str,
     language: str = "",
 ):
-    token = generate_jwt(config)
-    if not token:
-        logger.error("No JWT token available, cannot connect")
-        return
+    token = fetch_token(config)
 
     backend = HakeemBackendClient(
         url=config.backend_url,
@@ -195,10 +182,7 @@ async def main_loop(config: ClientConfig):
         logger.error("Failed to initialize wake word detector: %s", e)
         return
 
-    token = generate_jwt(config)
-    if not token:
-        logger.error("No JWT token available, cannot connect")
-        return
+    token = fetch_token(config)
 
     backend = HakeemBackendClient(
         url=config.backend_url,

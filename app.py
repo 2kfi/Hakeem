@@ -24,6 +24,7 @@ from core.config import get_settings, Settings
 from core.redis_manager import RedisManager, get_redis
 from core.app_state import get_app_state, AppState
 from core.jwt_auth import get_jwt_manager, verify_jwt
+from api.auth import router as auth_router
 from api.chat import router as chat_router
 from api.websocket import router as ws_router, _start_ws_listener, _active_connections
 from api.sessions import router as sessions_router
@@ -194,7 +195,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 async def api_key_fallback(request: Request, call_next):
     if get_settings().auth.disabled:
         return await call_next(request)
-    if request.url.path in ["/health", "/ready", "/live", "/metrics", "/openapi.json", "/docs", "/redoc"]:
+    if request.url.path in ["/health", "/ready", "/live", "/metrics", "/openapi.json", "/docs", "/redoc", "/api/v1/auth/token"]:
         return await call_next(request)
     if not request.url.path.startswith("/api/"):
         return await call_next(request)
@@ -235,6 +236,7 @@ async def add_request_id(request: Request, call_next):
     return response
 
 
+app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(health_router)
